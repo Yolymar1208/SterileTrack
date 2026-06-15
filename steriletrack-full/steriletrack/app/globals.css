@@ -1,0 +1,57 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --brand: #4AB8C1;
+  --brand-dark: #1E3A5F;
+  --brand-light: #E0F7F9;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background: #F0F4F8;
+  color: #1a202c;
+}
+
+/* Smooth scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #CBD5E0;
+  border-radius: 3px;
+}
+
+/* Status badge styles */
+.status-sterile   { background: #C6F6D5; color: #276749; }
+.status-in_or     { background: #BEE3F8; color: #2B6CB0; }
+.status-decontamination { background: #FEFCBF; color: #975A16; }
+.status-assembly  { background: #E9D8FD; color: #6B46C1; }
+.status-sterilization { background: #FEEBC8; color: #C05621; }
+.status-storage   { background: #E6FFFA; color: #2C7A7B; }
+.status-missing   { background: #FED7D7; color: #9B2C2C; }
+.status-damaged   { background: #FEEBC8; color: #744210; }
+.status-expired   { background: #E9D8FD; color: #553C9A; }
+
+@layer components {
+  .btn-primary {
+    @apply bg-brand-500 hover:bg-brand-600 text-white font-medium px-4 py-2 rounded-lg transition-colors flex items-center gap-2;
+  }
+  .btn-secondary {
+    @apply bg-white hover:bg-gray-50 text-gray-700 font-medium px-4 py-2 rounded-lg border border-gray-200 transition-colors flex items-center gap-2;
+  }
+  .card {
+    @apply bg-white rounded-xl border border-gray-100 shadow-sm;
+  }
+  .input-field {
+    @apply w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-brand-400 focus:border-transparent text-sm;
+  }
+}
