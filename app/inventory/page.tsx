@@ -4,17 +4,15 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import AppLayout from '@/app/dashboard/layout'
 import { createClient } from '@/lib/supabase'
-import { Search, Plus, Package, Filter, ChevronRight, QrCode } from 'lucide-react'
+import { Search, Plus, Package, ChevronRight, QrCode } from 'lucide-react'
 import { InventoryItem, STATUS_CONFIG, ItemStatus, ItemType } from '@/lib/types'
-import { format } from 'date-fns'
 
 const STATUS_FILTERS: { value: ItemStatus | 'all'; label: string }[] = [
   { value: 'all', label: 'All Items' },
   { value: 'sterile', label: 'Sterile' },
-  { value: 'in_or', label: 'In OR' },
-  { value: 'decontamination', label: 'Decontamination' },
-  { value: 'assembly', label: 'Assembly' },
-  { value: 'sterilization', label: 'Sterilization' },
+  { value: 'received', label: 'Received' },
+  { value: 'packed', label: 'Packed' },
+  { value: 'dispensed', label: 'At OR' },
   { value: 'missing', label: 'Missing' },
   { value: 'damaged', label: 'Damaged' },
 ]
@@ -66,16 +64,12 @@ export default function InventoryPage() {
             <p className="text-sm text-gray-500 mt-0.5">{items.length} total items</p>
           </div>
           <div className="flex gap-2">
-            <Link href="/scan" className="btn-secondary text-sm px-3 py-2">
-              <QrCode size={14} /> Scan
-            </Link>
             <button onClick={() => setShowAddModal(true)} className="btn-primary text-sm px-3 py-2">
               <Plus size={15} /> Add Item
             </button>
           </div>
         </div>
 
-        {/* Search and filter */}
         <div className="card p-4 mb-4">
           <div className="relative mb-3">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -109,7 +103,6 @@ export default function InventoryPage() {
           </div>
         </div>
 
-        {/* Items list */}
         <div className="card divide-y divide-gray-50">
           {loading ? (
             <div className="p-8 text-center text-gray-400 text-sm">Loading inventory…</div>
@@ -117,7 +110,6 @@ export default function InventoryPage() {
             <div className="p-8 text-center">
               <Package size={32} className="text-gray-300 mx-auto mb-3" />
               <p className="text-gray-500 text-sm font-medium">No items found</p>
-              <p className="text-gray-400 text-xs mt-1">Try adjusting your search or filter</p>
             </div>
           ) : filtered.map(item => {
             const cfg = STATUS_CONFIG[item.status]
@@ -143,9 +135,11 @@ export default function InventoryPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-3 flex-shrink-0">
-                    <span className={`text-[11px] font-medium px-2.5 py-1 rounded-full status-${item.status}`}>
-                      {cfg.label}
-                    </span>
+                    {cfg && (
+                      <span className="text-[11px] font-medium px-2.5 py-1 rounded-full" style={{ background: cfg.bg, color: cfg.color }}>
+                        {cfg.label}
+                      </span>
+                    )}
                     <ChevronRight size={15} className="text-gray-300" />
                   </div>
                 </div>
@@ -154,7 +148,6 @@ export default function InventoryPage() {
           })}
         </div>
 
-        {/* Add Item Modal */}
         {showAddModal && <AddItemModal onClose={() => setShowAddModal(false)} onSaved={loadItems} />}
       </div>
     </AppLayout>
@@ -179,7 +172,7 @@ function AddItemModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
     const { data: newItem, error: err } = await supabase.from('inventory_items').insert({
       ...form,
       expiry_date: form.expiry_date || null,
-      status: 'storage',
+      status: 'sterile',
     }).select().single()
 
     if (err) { setError(err.message); setLoading(false); return }
@@ -190,26 +183,13 @@ function AddItemModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
       item_qr_code: newItem.qr_code,
       action: 'created',
       performed_by_id: user!.id,
-      performed_by_name: profile?.full_name || 'Unknown',
+      performed_by_name: profile?.full_name || user?.email?.split('@')[0] || 'Staff',
       device_used: 'Web Browser',
     })
 
     onSaved()
     onClose()
   }
-
-  const field = (key: keyof typeof form, label: string, type = 'text', extra?: any) => (
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
-      <input
-        type={type}
-        value={form[key]}
-        onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
-        className="input-field"
-        {...extra}
-      />
-    </div>
-  )
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
@@ -220,8 +200,14 @@ function AddItemModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
         </div>
         <div className="p-5 space-y-4">
           {error && <div className="bg-red-50 text-red-700 text-sm rounded-lg px-4 py-3">{error}</div>}
-          {field('name', 'Item Name *', 'text', { placeholder: 'e.g. Major Set 001' })}
-          {field('qr_code', 'QR Code *', 'text', { placeholder: 'e.g. MAJOR-003', className: 'input-field font-mono' })}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Item Name *</label>
+            <input type="text" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Major Set 001" className="input-field" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">QR Code *</label>
+            <input type="text" value={form.qr_code} onChange={e => setForm(f => ({ ...f, qr_code: e.target.value }))} placeholder="e.g. MAJOR-003" className="input-field font-mono" />
+          </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Item Type</label>
             <select value={form.item_type} onChange={e => setForm(f => ({ ...f, item_type: e.target.value as ItemType }))} className="input-field">
@@ -232,10 +218,22 @@ function AddItemModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
               <option value="equipment">Equipment</option>
             </select>
           </div>
-          {field('description', 'Description', 'text', { placeholder: 'Brief description…' })}
-          {field('location', 'Location', 'text', { placeholder: 'e.g. Storage, OR 1' })}
-          {field('shelf_location', 'Shelf Location', 'text', { placeholder: 'e.g. Shelf A1' })}
-          {field('expiry_date', 'Expiry Date', 'date')}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+            <input type="text" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Brief description…" className="input-field" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Location</label>
+            <input type="text" value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))} placeholder="e.g. Storage" className="input-field" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Shelf Location</label>
+            <input type="text" value={form.shelf_location} onChange={e => setForm(f => ({ ...f, shelf_location: e.target.value }))} placeholder="e.g. Shelf A1" className="input-field" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Expiry Date</label>
+            <input type="date" value={form.expiry_date} onChange={e => setForm(f => ({ ...f, expiry_date: e.target.value }))} className="input-field" />
+          </div>
         </div>
         <div className="p-5 border-t border-gray-100 flex gap-3">
           <button onClick={onClose} className="btn-secondary flex-1 justify-center">Cancel</button>
