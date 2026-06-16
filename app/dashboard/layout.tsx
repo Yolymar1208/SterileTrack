@@ -11,7 +11,19 @@ import {
 } from 'lucide-react'
 import clsx from 'clsx'
 
-const NAV = [
+type NavItem = {
+  href: string
+  label: string
+  icon: any
+  highlight?: boolean
+}
+
+type NavSection = {
+  section: string
+  items: NavItem[]
+}
+
+const NAV: NavSection[] = [
   { section: 'Main', items: [
     { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   ]},
