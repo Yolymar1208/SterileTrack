@@ -1,23 +1,45 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { useSearchParams } from 'next/navigation'
 import AppLayout from '@/app/dashboard/layout'
 import { createClient } from '@/lib/supabase'
 import {
   Inbox, Search, CheckCircle2, AlertCircle, Loader2, Package,
   ClipboardCheck, PackageCheck, Flame, Archive, Edit3, Plus, Trash2,
-  Save, X, ArrowRight, Camera, QrCode, User
+  Save, X, ArrowRight, Camera, User, ChevronDown, ChevronUp
 } from 'lucide-react'
 import { InventoryItem, SetContent, Profile } from '@/lib/types'
 import { format } from 'date-fns'
 import CameraQRScanner from '@/components/CameraQRScanner'
 
-interface ChecklistItem extends SetContent { checked: boolean }
+interface ChecklistItem extends SetContent {
+  checked: boolean
+  receivedQty: number // editable qty during receiving
+}
+
+interface DispensedItem {
+  id: string
+  item_id: string
+  item_name: string
+  item_qr_code: string
+  or_room: string
+  received_by_name: string
+  received_by_id: string | null
+  dispensed_at: string
+}
 
 export default function ReceivingPage() {
   const supabase = createClient()
+  const searchParams = useSearchParams()
   const inputRef = useRef<HTMLInputElement>(null)
 
+  // Dispensed items list
+  const [dispensedItems, setDispensedItems] = useState<DispensedItem[]>([])
+  const [showDispensedList, setShowDispensedList] = useState(true)
+  const [loadingDispensed, setLoadingDispensed] = useState(true)
+
+  // Item being processed
   const [qrInput, setQrInput] = useState('')
   const [item, setItem] = useState<InventoryItem | null>(null)
   const [contents, setContents] = useState<ChecklistItem[]>([])
@@ -27,7 +49,7 @@ export default function ReceivingPage() {
   const [editingList, setEditingList] = useState(false)
   const [newInstr, setNewInstr] = useState({ name: '', qty: 1 })
 
-  // Returned-by staff
+  // Returned-by staff (persists across steps)
   const [returnedByStaff, setReturnedByStaff] = useState<Profile | null>(null)
   const [returnedBySearch, setReturnedBySearch] = useState('')
   const [returnedByResults, setReturnedByResults] = useState<Profile[]>([])
@@ -45,7 +67,6 @@ export default function ReceivingPage() {
   const [userDept, setUserDept] = useState<string | null>(null)
 
   useEffect(() => {
-    inputRef.current?.focus()
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (!user) return
       setUserId(user.id)
@@ -55,18 +76,98 @@ export default function ReceivingPage() {
           else setUserName(user.email?.split('@')[0] || 'Staff')
         })
     })
+    loadDispensedItems()
+
+    // Auto-load from URL param (from Inventory "Update" button)
+    const preload = searchParams.get('qr')
+    if (preload) {
+      setQrInput(preload)
+      setTimeout(() => lookupItem(preload), 300)
+    } else {
+      inputRef.current?.focus()
+    }
   }, [])
+
+  async function loadDispensedItems() {
+    setLoadingDispensed(true)
+    // Get all dispensed items with their latest dispense record
+    const { data: items } = await supabase
+      .from('inventory_items')
+      .select('id, name, qr_code, location, updated_at')
+      .eq('status', 'dispensed')
+      .order('updated_at', { ascending: false })
+
+    if (!items || items.length === 0) { setDispensedItems([]); setLoadingDispensed(false); return }
+
+    // For each item, get the latest dispense record
+    const enriched: DispensedItem[] = []
+    for (const it of items) {
+      const { data: dr } = await supabase
+        .from('dispense_records')
+        .select('id, received_by_name, received_by_id, or_room, created_at')
+        .eq('item_id', it.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single()
+
+      enriched.push({
+        id: dr?.id || '',
+        item_id: it.id,
+        item_name: it.name,
+        item_qr_code: it.qr_code,
+        or_room: dr?.or_room || it.location || '—',
+        received_by_name: dr?.received_by_name || '—',
+        received_by_id: dr?.received_by_id || null,
+        dispensed_at: dr?.created_at || it.updated_at,
+      })
+    }
+    setDispensedItems(enriched)
+    setLoadingDispensed(false)
+  }
+
+  async function selectDispensedItem(dispensed: DispensedItem) {
+    setShowDispensedList(false)
+    setQrInput(dispensed.item_qr_code)
+    await lookupItemWithDispense(dispensed.item_qr_code, dispensed)
+  }
 
   async function lookupItem(code: string) {
     if (!code.trim()) return
+    // Find the dispense record too
+    const { data: items } = await supabase
+      .from('inventory_items').select('id').eq('qr_code', code.trim().toUpperCase()).single()
+    if (items) {
+      const { data: dr } = await supabase
+        .from('dispense_records')
+        .select('id, received_by_name, received_by_id, or_room, created_at')
+        .eq('item_id', items.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single()
+      if (dr) {
+        const dispensed: DispensedItem = {
+          id: dr.id, item_id: items.id, item_name: '', item_qr_code: code,
+          or_room: dr.or_room, received_by_name: dr.received_by_name,
+          received_by_id: dr.received_by_id, dispensed_at: dr.created_at,
+        }
+        await lookupItemWithDispense(code, dispensed)
+        return
+      }
+    }
+    await lookupItemWithDispense(code, null)
+  }
+
+  async function lookupItemWithDispense(code: string, dispense: DispensedItem | null) {
     setSearching(true); setError(''); setSuccess(''); setItem(null); setContents([])
-    setRemarks(''); setMissingItems(''); setShelfLocation(''); setReturnedByStaff(null)
+    setRemarks(''); setMissingItems(''); setShelfLocation(''); setEditingList(false)
 
     let found: InventoryItem | null = null
-    const { data } = await supabase.from('inventory_items').select('*').eq('qr_code', code.trim().toUpperCase()).single()
+    const { data } = await supabase.from('inventory_items').select('*')
+      .eq('qr_code', code.trim().toUpperCase()).single()
     if (data) found = data
     if (!found) {
-      const { data: d2 } = await supabase.from('inventory_items').select('*').ilike('qr_code', code.trim()).single()
+      const { data: d2 } = await supabase.from('inventory_items').select('*')
+        .ilike('qr_code', code.trim()).single()
       if (d2) found = d2
     }
     if (!found) { setError(`No item found for "${code.trim()}".`); setSearching(false); return }
@@ -75,8 +176,19 @@ export default function ReceivingPage() {
     setRemarks(found.current_remarks || '')
     setShelfLocation(found.shelf_location || '')
 
-    const { data: cList } = await supabase.from('set_contents').select('*').eq('set_id', found.id).order('sort_order')
-    setContents((cList || []).map(c => ({ ...c, checked: false })))
+    // Pre-fill returned-by from dispense record
+    if (dispense?.received_by_id) {
+      const { data: profile } = await supabase
+        .from('profiles').select('*').eq('id', dispense.received_by_id).single()
+      if (profile) setReturnedByStaff(profile)
+    } else if (dispense?.received_by_name) {
+      // Staff exists but no ID — create partial profile object
+      setReturnedByStaff({ id: '', full_name: dispense.received_by_name, role: 'or_nurse', department: null, employee_id: null, qr_code: null, avatar_initials: null } as Profile)
+    }
+
+    const { data: cList } = await supabase.from('set_contents').select('*')
+      .eq('set_id', found.id).order('sort_order')
+    setContents((cList || []).map(c => ({ ...c, checked: false, receivedQty: c.quantity })))
     setSearching(false)
   }
 
@@ -102,6 +214,35 @@ export default function ReceivingPage() {
     setContents(c => c.map(i => ({ ...i, checked: !allChecked })))
   }
 
+  async function updateReceivedQty(contentId: string, newQty: number, originalQty: number) {
+    if (newQty === originalQty) return
+    setContents(c => c.map(i => i.id === contentId ? { ...i, receivedQty: newQty } : i))
+
+    const target = contents.find(c => c.id === contentId)
+    if (!target || !item) return
+
+    const diff = originalQty - newQty
+    if (diff > 0) {
+      // Quantity reduced — log audit + create alert
+      const note = `Quantity discrepancy: ${target.instrument_name} — expected ${originalQty}, received ${newQty} (missing ${diff})`
+
+      await supabase.from('audit_logs').insert({
+        item_id: item.id, item_name: item.name, item_qr_code: item.qr_code,
+        action: 'set_contents_updated',
+        performed_by_id: userId, performed_by_name: userName,
+        department: userDept, location: 'CSSD Receiving Area',
+        device_used: 'Web Browser', notes: note,
+      })
+
+      await supabase.from('alerts').insert({
+        alert_type: 'quantity_discrepancy', severity: 'critical',
+        title: `Quantity discrepancy in ${item.name}`,
+        body: `${target.instrument_name}: expected ${originalQty}, received ${newQty}. Reported by ${userName}.`,
+        item_id: item.id, item_name: item.name,
+      })
+    }
+  }
+
   async function addInstrument() {
     if (!item || !newInstr.name.trim()) return
     const { data } = await supabase.from('set_contents').insert({
@@ -109,7 +250,7 @@ export default function ReceivingPage() {
       quantity: newInstr.qty, sort_order: contents.length + 1,
     }).select().single()
     if (data) {
-      setContents(c => [...c, { ...data, checked: true }])
+      setContents(c => [...c, { ...data, checked: true, receivedQty: newInstr.qty }])
       await logAudit('set_contents_updated', `Added during receiving: ${newInstr.qty}× ${newInstr.name.trim()}`)
       setNewInstr({ name: '', qty: 1 })
     }
@@ -132,14 +273,18 @@ export default function ReceivingPage() {
     })
   }
 
+  const returnedByLabel = returnedByStaff
+    ? `Returned by: ${returnedByStaff.full_name}`
+    : `Returned by: ${item?.last_user_name || 'unknown'} (default)`
+
   // STEP 1 — Receive
   async function markReceived() {
     if (!item || !userId) return
     setLoading(true); setError('')
 
-    const returnedBy = returnedByStaff
-      ? `Returned by: ${returnedByStaff.full_name} (${returnedByStaff.qr_code || 'no QR'})`
-      : `Returned by: Same staff (${item.last_user_name || 'unknown'})`
+    const returnNote = returnedByStaff
+      ? `Returned by: ${returnedByStaff.full_name}${returnedByStaff.qr_code ? ' (' + returnedByStaff.qr_code + ')' : ''}`
+      : `Returned by: ${item.last_user_name || 'unknown'} (default — same staff)`
 
     await supabase.from('inventory_items').update({
       status: 'received', location: 'CSSD Receiving Area',
@@ -149,7 +294,7 @@ export default function ReceivingPage() {
     }).eq('id', item.id)
 
     await logAudit('received_at_cssd',
-      `${returnedBy}. ${remarks || ''}${missingItems ? ' Missing: ' + missingItems : ''}`.trim())
+      `${returnNote}. ${remarks || ''}${missingItems ? ' Missing: ' + missingItems : ''}`.trim())
 
     if (missingItems) {
       await supabase.from('alerts').insert({
@@ -160,7 +305,7 @@ export default function ReceivingPage() {
       })
     }
     setSuccess('Set received and inspected ✓'); setLoading(false)
-    await lookupItem(item.qr_code)
+    await lookupItemWithDispense(item.qr_code, null)
   }
 
   // STEP 2 — Pack
@@ -169,7 +314,9 @@ export default function ReceivingPage() {
     setLoading(true); setError('')
     const checked = contents.filter(c => c.checked).length
     const total = contents.length
-    const inspNote = `Inspection: ${checked}/${total} items verified. ${remarks || ''}`
+    const returnNote = returnedByStaff
+      ? `Returned by: ${returnedByStaff.full_name}`
+      : `Returned by: ${item.last_user_name || 'unknown'} (default)`
 
     await supabase.from('inspections').insert({
       item_id: item.id, item_name: item.name,
@@ -186,9 +333,10 @@ export default function ReceivingPage() {
       updated_at: new Date().toISOString(),
     }).eq('id', item.id)
 
-    await logAudit('packed_for_sterilization', inspNote)
-    setSuccess('Set packed and ready for sterilization 🔥'); setLoading(false)
-    await lookupItem(item.qr_code)
+    await logAudit('packed_for_sterilization',
+      `${returnNote}. Inspection: ${checked}/${total} verified. ${remarks || ''}`.trim())
+    setSuccess('Packed and ready for sterilization 🔥'); setLoading(false)
+    await lookupItemWithDispense(item.qr_code, null)
   }
 
   // STEP 3 — Confirm sterile
@@ -208,11 +356,15 @@ export default function ReceivingPage() {
       current_remarks: null, updated_at: now.toISOString(),
     }).eq('id', item.id)
 
-    await logAudit('placed_on_shelf', `Sterilization tape verified. Shelf: ${shelfLocation}. ${remarks || ''}`)
+    await logAudit('placed_on_shelf',
+      `Sterilization tape verified. Shelf: ${shelfLocation}. ${remarks || ''}`)
     setSuccess(`Verified sterile and placed on ${shelfLocation} ✓`); setLoading(false)
     setTimeout(() => {
       setItem(null); setQrInput(''); setContents([])
       setRemarks(''); setShelfLocation(''); setSuccess('')
+      setReturnedByStaff(null)
+      loadDispensedItems()
+      setShowDispensedList(true)
       inputRef.current?.focus()
     }, 2000)
   }
@@ -232,26 +384,83 @@ export default function ReceivingPage() {
           <h1 className="text-xl font-semibold text-gray-800 flex items-center gap-2">
             <Inbox size={22} className="text-brand-500" /> CSSD Receiving Area
           </h1>
-          <p className="text-sm text-gray-500 mt-1">Receive → Inspect & Pack → Sterilize → Place on Shelf</p>
+          <p className="text-sm text-gray-500 mt-1">Select a returned set or scan its QR code</p>
         </div>
 
-        {/* QR scan */}
-        <div className="card p-5 mb-4">
-          <label className="block text-sm font-medium text-gray-700 mb-2">Scan Instrument Set QR Code</label>
-          <div className="flex gap-2">
-            <input ref={inputRef} type="text" value={qrInput}
-              onChange={e => setQrInput(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && lookupItem(qrInput)}
-              placeholder="e.g. MAJOR-001, ORTHO-002…"
-              className="input-field flex-1 text-base font-mono" />
-            <button onClick={() => setShowMainCamera(true)} className="btn-secondary px-3" title="Scan with camera">
-              <Camera size={16} />
+        {/* DISPENSED ITEMS LIST */}
+        {!item && (
+          <div className="card mb-4 overflow-hidden">
+            <button
+              onClick={() => setShowDispensedList(!showDispensedList)}
+              className="w-full flex items-center justify-between px-4 py-3 bg-brand-50 hover:bg-brand-100 transition-colors">
+              <div className="flex items-center gap-2">
+                <Package size={16} className="text-brand-500" />
+                <span className="font-medium text-brand-800 text-sm">
+                  Items Currently at OR ({dispensedItems.length})
+                </span>
+              </div>
+              {showDispensedList
+                ? <ChevronUp size={16} className="text-brand-500" />
+                : <ChevronDown size={16} className="text-brand-500" />}
             </button>
-            <button onClick={() => lookupItem(qrInput)} disabled={!qrInput.trim() || searching} className="btn-primary px-4">
-              {searching ? <Loader2 size={16} className="animate-spin" /> : <><Search size={15} /> Find</>}
-            </button>
+
+            {showDispensedList && (
+              <div>
+                {loadingDispensed ? (
+                  <div className="p-6 text-center text-gray-400 text-sm">Loading…</div>
+                ) : dispensedItems.length === 0 ? (
+                  <div className="p-6 text-center text-gray-400 text-sm">
+                    No items currently dispensed to OR.
+                  </div>
+                ) : (
+                  <div className="divide-y divide-gray-50">
+                    {dispensedItems.map(d => (
+                      <button key={d.item_id} onClick={() => selectDispensedItem(d)}
+                        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors text-left">
+                        <div className="w-9 h-9 bg-blue-50 rounded-xl flex items-center justify-center flex-shrink-0">
+                          <Package size={16} className="text-blue-600" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium text-gray-800">{d.item_name}</div>
+                          <div className="text-xs text-gray-400 mt-0.5 flex items-center gap-3 flex-wrap">
+                            <span className="font-mono">{d.item_qr_code}</span>
+                            <span>📍 {d.or_room}</span>
+                            <span>👤 {d.received_by_name}</span>
+                          </div>
+                        </div>
+                        <div className="text-xs text-brand-500 font-medium flex-shrink-0">
+                          Select →
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
-        </div>
+        )}
+
+        {/* QR scan / manual input */}
+        {!item && (
+          <div className="card p-5 mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Or scan / type QR code directly
+            </label>
+            <div className="flex gap-2">
+              <input ref={inputRef} type="text" value={qrInput}
+                onChange={e => setQrInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && lookupItem(qrInput)}
+                placeholder="e.g. MAJOR-001…"
+                className="input-field flex-1 text-base font-mono" />
+              <button onClick={() => setShowMainCamera(true)} className="btn-secondary px-3" title="Scan with camera">
+                <Camera size={16} />
+              </button>
+              <button onClick={() => lookupItem(qrInput)} disabled={!qrInput.trim() || searching} className="btn-primary px-4">
+                {searching ? <Loader2 size={16} className="animate-spin" /> : <Search size={15} />}
+              </button>
+            </div>
+          </div>
+        )}
 
         {error && (
           <div className="card border-red-200 bg-red-50 p-4 mb-4 flex items-start gap-3">
@@ -268,18 +477,23 @@ export default function ReceivingPage() {
 
         {item && (
           <>
-            {/* Item header + step indicator */}
+            {/* Back button + item header */}
             <div className="card p-5 mb-4">
+              <button onClick={() => { setItem(null); setQrInput(''); setReturnedByStaff(null); setShowDispensedList(true) }}
+                className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 mb-3">
+                ← Back to list
+              </button>
               <div className="flex items-start gap-3 mb-4">
                 <div className="w-11 h-11 bg-brand-50 rounded-2xl flex items-center justify-center flex-shrink-0">
                   <Package size={22} className="text-brand-500" />
                 </div>
                 <div className="flex-1">
                   <h2 className="font-semibold text-gray-800 text-lg">{item.name}</h2>
-                  <p className="text-sm text-gray-500">{item.description || item.item_type.replace(/_/g,' ')}</p>
-                  <p className="text-xs text-gray-400 mt-0.5 font-mono">{item.qr_code}</p>
+                  <p className="text-xs text-gray-400 font-mono mt-0.5">{item.qr_code}</p>
                 </div>
               </div>
+
+              {/* Step indicator */}
               <div className="flex items-center gap-1">
                 {[
                   { n: 1, label: 'Receive & Inspect', icon: ClipboardCheck },
@@ -295,7 +509,7 @@ export default function ReceivingPage() {
                       }`}>
                         {done ? <CheckCircle2 size={12} /> : <s.icon size={12} />}
                         <span className="hidden sm:inline">{s.label}</span>
-                        <span className="sm:hidden">Step {s.n}</span>
+                        <span className="sm:hidden">{s.n}</span>
                       </div>
                       {i < 2 && <ArrowRight size={12} className="text-gray-300 flex-shrink-0" />}
                     </div>
@@ -304,7 +518,7 @@ export default function ReceivingPage() {
               </div>
             </div>
 
-            {/* Step 1 & 2: Checklist + Returned By */}
+            {/* Step 1 & 2 content */}
             {(step === 1 || step === 2) && (
               <>
                 {/* Checklist */}
@@ -324,8 +538,8 @@ export default function ReceivingPage() {
 
                   {contents.length === 0 && !editingList && (
                     <div className="text-center py-6 bg-gray-50 rounded-xl">
-                      <p className="text-sm text-gray-500">No instruments listed yet.</p>
-                      <button onClick={() => setEditingList(true)} className="text-xs text-brand-500 font-medium mt-2">+ Add instruments</button>
+                      <p className="text-sm text-gray-500">No instruments listed.</p>
+                      <button onClick={() => setEditingList(true)} className="text-xs text-brand-500 font-medium mt-1">+ Add instruments</button>
                     </div>
                   )}
 
@@ -336,21 +550,48 @@ export default function ReceivingPage() {
                           {contents.every(c => c.checked) ? 'Uncheck all' : 'Check all'}
                         </button>
                       )}
-                      <div className="space-y-1.5 max-h-72 overflow-y-auto">
+                      <div className="space-y-1.5 max-h-80 overflow-y-auto">
                         {contents.map(c => (
-                          <div key={c.id} className={`flex items-center gap-3 p-2.5 rounded-lg transition-colors ${
-                            editingList ? 'bg-gray-50' : c.checked ? 'bg-green-50' : 'bg-white border border-gray-100'
+                          <div key={c.id} className={`flex items-center gap-2 p-2.5 rounded-lg transition-colors ${
+                            editingList ? 'bg-blue-50 border border-blue-100' : c.checked ? 'bg-green-50' : 'bg-white border border-gray-100'
                           }`}>
                             {!editingList && (
                               <input type="checkbox" checked={c.checked} onChange={() => toggleCheck(c.id)}
                                 className="w-5 h-5 rounded text-brand-500 flex-shrink-0" />
                             )}
                             <div className="flex-1 text-sm text-gray-700">{c.instrument_name}</div>
-                            <span className="text-xs font-mono bg-gray-100 px-2 py-0.5 rounded text-gray-600">×{c.quantity}</span>
-                            {editingList && (
-                              <button onClick={() => removeInstrument(c.id)} className="text-red-400 hover:text-red-600">
-                                <Trash2 size={13} />
-                              </button>
+
+                            {editingList ? (
+                              // Editable quantity in edit mode
+                              <div className="flex items-center gap-1.5">
+                                <label className="text-xs text-gray-400">Rcvd:</label>
+                                <input
+                                  type="number" min={0} max={c.quantity}
+                                  value={c.receivedQty}
+                                  onChange={e => {
+                                    const newQty = parseInt(e.target.value) || 0
+                                    updateReceivedQty(c.id, newQty, c.quantity)
+                                  }}
+                                  className="w-16 text-center text-sm border border-gray-200 rounded-lg px-2 py-1 focus:ring-2 focus:ring-brand-400 focus:outline-none"
+                                />
+                                <span className="text-xs text-gray-400">/ {c.quantity}</span>
+                                {c.receivedQty < c.quantity && (
+                                  <span className="text-xs text-red-500 font-medium">
+                                    -{c.quantity - c.receivedQty}
+                                  </span>
+                                )}
+                                <button onClick={() => removeInstrument(c.id)}
+                                  className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded" title="Remove">
+                                  <Trash2 size={13} />
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="text-xs font-mono bg-gray-100 px-2 py-0.5 rounded text-gray-600">
+                                ×{c.receivedQty}
+                                {c.receivedQty < c.quantity && (
+                                  <span className="text-red-500 ml-1">(of {c.quantity})</span>
+                                )}
+                              </span>
                             )}
                           </div>
                         ))}
@@ -359,37 +600,38 @@ export default function ReceivingPage() {
                   )}
 
                   {editingList && (
-                    <div className="mt-3 flex gap-2 items-end">
+                    <div className="mt-3 flex gap-2 items-end border-t border-blue-100 pt-3">
                       <div className="flex-1">
-                        <label className="text-xs text-gray-500">Instrument name</label>
+                        <label className="text-xs text-gray-500 mb-1 block">New instrument</label>
                         <input type="text" value={newInstr.name}
                           onChange={e => setNewInstr({...newInstr, name: e.target.value})}
                           onKeyDown={e => e.key === 'Enter' && addInstrument()}
                           placeholder='e.g. Allis Forceps' className="input-field" />
                       </div>
                       <div className="w-20">
-                        <label className="text-xs text-gray-500">Qty</label>
+                        <label className="text-xs text-gray-500 mb-1 block">Qty</label>
                         <input type="number" min={1} value={newInstr.qty}
                           onChange={e => setNewInstr({...newInstr, qty: parseInt(e.target.value) || 1})}
                           className="input-field" />
                       </div>
-                      <button onClick={addInstrument} disabled={!newInstr.name.trim()} className="btn-primary px-3 py-2 text-sm">
+                      <button onClick={addInstrument} disabled={!newInstr.name.trim()} className="btn-primary px-3 py-2">
                         <Plus size={14} />
                       </button>
                     </div>
                   )}
                 </div>
 
-                {/* Remarks + Returned By — side by side on wider screens */}
+                {/* Remarks + Returned By */}
                 <div className="card p-5 mb-4">
                   <div className="grid md:grid-cols-2 gap-4">
+                    {/* Remarks */}
                     <div className="space-y-3">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
                           Remarks <span className="text-gray-400 font-normal">(optional)</span>
                         </label>
                         <textarea value={remarks} onChange={e => setRemarks(e.target.value)}
-                          placeholder="Functionality issues, condition notes…"
+                          placeholder="Condition notes, functionality issues…"
                           rows={3} className="input-field resize-none text-sm" />
                       </div>
                       <div>
@@ -406,16 +648,23 @@ export default function ReceivingPage() {
                     {/* Returned By */}
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Returned by <span className="text-gray-400 font-normal">(if different from original staff)</span>
+                        Returned by
                       </label>
-                      {item.last_user_name && !returnedByStaff && (
-                        <div className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2 mb-2 flex items-center gap-1.5">
-                          <User size={11} />
-                          Default: <strong>{item.last_user_name}</strong> (last user)
+
+                      {/* Show carry-over note in Pack step */}
+                      {step === 2 && returnedByStaff && (
+                        <div className="text-xs text-blue-600 bg-blue-50 rounded-lg px-2 py-1.5 mb-2 flex items-center gap-1.5">
+                          ✓ Carried over from Receive step
                         </div>
                       )}
+
                       {!returnedByStaff ? (
                         <div className="space-y-2">
+                          {item.last_user_name && (
+                            <div className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2 flex items-center gap-1.5">
+                              <User size={11} /> Default: <strong>{item.last_user_name}</strong>
+                            </div>
+                          )}
                           <div className="flex gap-2">
                             <input type="text" value={returnedByQr}
                               onChange={e => setReturnedByQr(e.target.value)}
@@ -440,7 +689,7 @@ export default function ReceivingPage() {
                                     onClick={() => { setReturnedByStaff(s); setReturnedBySearch(''); setReturnedByResults([]) }}
                                     className="w-full text-left px-3 py-2 hover:bg-gray-50 text-sm">
                                     <div className="font-medium text-gray-700">{s.full_name}</div>
-                                    <div className="text-xs text-gray-400">{s.role?.replace(/_/g,' ')}</div>
+                                    <div className="text-xs text-gray-400 capitalize">{s.role?.replace(/_/g,' ')}</div>
                                   </button>
                                 ))}
                               </div>
@@ -449,14 +698,16 @@ export default function ReceivingPage() {
                         </div>
                       ) : (
                         <div className="bg-blue-50 border border-blue-200 rounded-xl px-3 py-2.5 flex items-center gap-2">
-                          <User size={14} className="text-blue-500" />
+                          <User size={14} className="text-blue-500 flex-shrink-0" />
                           <div className="flex-1">
                             <div className="text-sm font-medium text-gray-800">{returnedByStaff.full_name}</div>
-                            <div className="text-xs text-gray-500">{returnedByStaff.role?.replace(/_/g,' ')}</div>
+                            <div className="text-xs text-gray-500 capitalize">{returnedByStaff.role?.replace(/_/g,' ')}</div>
                           </div>
-                          <button onClick={() => setReturnedByStaff(null)} className="text-gray-400 hover:text-gray-600">
-                            <X size={14} />
-                          </button>
+                          {step === 1 && (
+                            <button onClick={() => setReturnedByStaff(null)} className="text-gray-400 hover:text-gray-600">
+                              <X size={14} />
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>
@@ -465,7 +716,7 @@ export default function ReceivingPage() {
               </>
             )}
 
-            {/* Step 3: Shelf */}
+            {/* Step 3: Shelf location */}
             {step === 3 && (
               <div className="card p-5 mb-4">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -476,9 +727,7 @@ export default function ReceivingPage() {
                     <button key={s} onClick={() => setShelfLocation(s)}
                       className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
                         shelfLocation === s ? 'bg-brand-500 text-white border-brand-500' : 'bg-white text-gray-600 border-gray-200 hover:border-brand-300'
-                      }`}>
-                      {s}
-                    </button>
+                      }`}>{s}</button>
                   ))}
                 </div>
                 <input type="text" value={shelfLocation} onChange={e => setShelfLocation(e.target.value)}
@@ -487,7 +736,7 @@ export default function ReceivingPage() {
             )}
 
             {/* Action buttons */}
-            <div className="grid gap-2">
+            <div className="mb-4">
               {step === 1 && (
                 <button onClick={markReceived} disabled={loading}
                   className="w-full py-3.5 rounded-xl text-base font-semibold bg-brand-500 hover:bg-brand-600 text-white flex items-center justify-center gap-2 shadow-sm">
