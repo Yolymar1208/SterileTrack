@@ -1,21 +1,22 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import AppLayout from '@/app/dashboard/layout'
 import { createClient } from '@/lib/supabase'
-import { Users, Search, Edit2, Save, X, QrCode, Link2, Printer, Download, Shield, Camera } from 'lucide-react'
+import {
+  Users, Search, Edit2, Save, X, QrCode,
+  Link2, Printer, Download, Shield, Eye, EyeOff, Lock
+} from 'lucide-react'
 import { Profile } from '@/lib/types'
-import CameraQRScanner from '@/components/CameraQRScanner'
+
+interface StaffWithQR extends Profile {
+  paired_at: string | null
+}
 
 interface QRPoolItem {
   id: string
   code: string
   is_assigned: boolean
-  assigned_to: string | null
-}
-
-interface StaffWithQR extends Profile {
-  paired_at: string | null
 }
 
 export default function StaffPage() {
@@ -23,20 +24,31 @@ export default function StaffPage() {
   const [staff, setStaff] = useState<StaffWithQR[]>([])
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+
+  // Edit state — only for own account
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [editForm, setEditForm] = useState({ full_name: '', role: '', department: '', employee_id: '' })
+  const [editForm, setEditForm] = useState({ role: '', employee_id: '' })
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [showPw, setShowPw] = useState(false)
+  const [pwError, setPwError] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [saveMsg, setSaveMsg] = useState('')
+
+  // QR pairing state
   const [pairingId, setPairingId] = useState<string | null>(null)
   const [qrPool, setQrPool] = useState<QRPoolItem[]>([])
   const [selectedQR, setSelectedQR] = useState<string | null>(null)
   const [pairConfirming, setPairConfirming] = useState(false)
+  const [pairSaving, setPairSaving] = useState(false)
+
+  // View own QR
   const [viewingQR, setViewingQR] = useState<StaffWithQR | null>(null)
-  const [currentUser, setCurrentUser] = useState<string | null>(null)
-  const [saving, setSaving] = useState(false)
-  const qrCanvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) setCurrentUser(user.id)
+      if (user) setCurrentUserId(user.id)
     })
     load()
   }, [])
@@ -44,7 +56,7 @@ export default function StaffPage() {
   async function load() {
     const { data } = await supabase
       .from('profiles')
-      .select('*, paired_at:qr_paired_at')
+      .select('*, qr_paired_at')
       .order('full_name')
     setStaff((data || []) as StaffWithQR[])
     setLoading(false)
@@ -59,6 +71,62 @@ export default function StaffPage() {
     setQrPool(data || [])
   }
 
+  function startEdit(p: StaffWithQR) {
+    // Only allow editing own account
+    if (p.id !== currentUserId) return
+    setEditingId(p.id)
+    setEditForm({ role: p.role, employee_id: p.employee_id || '' })
+    setNewPassword('')
+    setConfirmPassword('')
+    setPwError('')
+    setSaveMsg('')
+  }
+
+  async function saveEdit(id: string) {
+    setPwError('')
+    setSaveMsg('')
+
+    // Validate password if entered
+    if (newPassword) {
+      if (newPassword.length < 8) {
+        setPwError('Password must be at least 8 characters.')
+        return
+      }
+      if (newPassword !== confirmPassword) {
+        setPwError('Passwords do not match.')
+        return
+      }
+    }
+
+    setSaving(true)
+
+    // Update profile fields
+    await supabase.from('profiles').update({
+      role: editForm.role,
+      employee_id: editForm.employee_id || null,
+    }).eq('id', id)
+
+    // Update password if provided
+    if (newPassword) {
+      const { error: pwErr } = await supabase.auth.updateUser({ password: newPassword })
+      if (pwErr) {
+        setPwError('Password update failed: ' + pwErr.message)
+        setSaving(false)
+        return
+      }
+    }
+
+    setSaving(false)
+    setSaveMsg(newPassword ? 'Profile and password updated ✓' : 'Profile updated ✓')
+    setNewPassword('')
+    setConfirmPassword('')
+    setTimeout(() => {
+      setEditingId(null)
+      setSaveMsg('')
+      load()
+    }, 1500)
+  }
+
   async function startPairing(staffId: string) {
     await loadQRPool()
     setPairingId(staffId)
@@ -68,57 +136,26 @@ export default function StaffPage() {
 
   async function confirmPair() {
     if (!pairingId || !selectedQR) return
-    setSaving(true)
-    const pool = qrPool.find(q => q.code === selectedQR)
-    if (!pool) return
+    setPairSaving(true)
 
-    // Update profile qr_code and paired_at
     await supabase.from('profiles').update({
       qr_code: selectedQR,
       qr_paired_at: new Date().toISOString(),
     }).eq('id', pairingId)
 
-    // Mark pool item as assigned
     await supabase.from('staff_qr_pool').update({
       is_assigned: true,
       assigned_to: pairingId,
       assigned_at: new Date().toISOString(),
     }).eq('code', selectedQR)
 
-    // Log to audit
-    const member = staff.find(s => s.id === pairingId)
-    await supabase.from('audit_logs').insert({
-      item_id: '00000000-0000-0000-0000-000000000000',
-      item_name: 'Staff QR Pairing',
-      item_qr_code: selectedQR,
-      action: 'staff_qr_paired',
-      performed_by_id: currentUser,
-      performed_by_name: staff.find(s => s.id === currentUser)?.full_name || 'Admin',
-      notes: `QR code ${selectedQR} paired to ${member?.full_name}`,
-      device_used: 'Web Browser',
- })
-
-    setSaving(false)
+    setPairSaving(false)
     setPairingId(null)
     setSelectedQR(null)
     setPairConfirming(false)
     load()
   }
 
-  async function saveEdit(id: string) {
-    setSaving(true)
-    await supabase.from('profiles').update({
-      full_name: editForm.full_name,
-      role: editForm.role,
-      department: editForm.department,
-      employee_id: editForm.employee_id,
-    }).eq('id', id)
-    setSaving(false)
-    setEditingId(null)
-    load()
-  }
-
-  // Generate QR code as canvas using simple QR pattern (uses Google Charts API for simplicity)
   function getQRUrl(code: string) {
     return `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(code)}&bgcolor=ffffff&color=1E3A5F&margin=10`
   }
@@ -134,7 +171,9 @@ export default function StaffPage() {
           <h1 className="text-xl font-semibold text-gray-800 flex items-center gap-2">
             <Users size={22} className="text-brand-500" /> Staff Directory
           </h1>
-          <p className="text-sm text-gray-500 mt-1">Manage staff accounts and pair QR badges</p>
+          <p className="text-sm text-gray-500 mt-1">
+            You can only edit your own account. Tap your name to manage your profile.
+          </p>
         </div>
 
         <div className="card p-4 mb-4">
@@ -146,105 +185,181 @@ export default function StaffPage() {
         </div>
 
         <div className="card divide-y divide-gray-50">
-          {loading ? <div className="p-8 text-center text-gray-400">Loading…</div>
-          : filtered.length === 0 ? (
+          {loading ? (
+            <div className="p-8 text-center text-gray-400">Loading…</div>
+          ) : filtered.length === 0 ? (
             <div className="p-8 text-center text-gray-400">
               No staff found. Add staff in Supabase → Authentication → Users.
             </div>
-          ) : filtered.map(p => (
-            <div key={p.id}>
-              {editingId === p.id ? (
-                <div className="px-4 py-4 space-y-3">
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="text-xs text-gray-500">Full Name</label>
-                      <input value={editForm.full_name} onChange={e => setEditForm({...editForm, full_name: e.target.value})} className="input-field text-sm" />
+          ) : filtered.map(p => {
+            const isMe = p.id === currentUserId
+            const isEditing = editingId === p.id
+
+            return (
+              <div key={p.id}>
+                {isEditing ? (
+                  /* Edit form — only for own account */
+                  <div className="px-4 py-4 bg-brand-50 border-l-4 border-brand-400">
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="w-8 h-8 bg-brand-100 rounded-full flex items-center justify-center text-brand-700 text-xs font-bold">
+                        {p.full_name.split(' ').map(n => n[0]).join('').slice(0,2)}
+                      </div>
+                      <div>
+                        <div className="text-sm font-medium text-gray-800">{p.full_name}</div>
+                        <div className="text-xs text-gray-500">{p.department || 'No department'}</div>
+                      </div>
                     </div>
-                    <div>
-                      <label className="text-xs text-gray-500">Role</label>
-                      <select value={editForm.role} onChange={e => setEditForm({...editForm, role: e.target.value})} className="input-field text-sm">
-                        <option value="cssd_technician">CSSD Technician</option>
-                        <option value="cssd_supervisor">CSSD Supervisor</option>
-                        <option value="or_nurse">OR Nurse</option>
-                        <option value="or_supervisor">OR Supervisor</option>
-                        <option value="infection_control">Infection Control</option>
-                        <option value="hospital_admin">Hospital Admin</option>
-                        <option value="system_admin">System Admin</option>
-                      </select>
+
+                    <div className="grid grid-cols-2 gap-3 mb-3">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Role</label>
+                        <select value={editForm.role}
+                          onChange={e => setEditForm({...editForm, role: e.target.value})}
+                          className="input-field text-sm">
+                          <option value="cssd_technician">CSSD Technician</option>
+                          <option value="cssd_supervisor">CSSD Supervisor</option>
+                          <option value="or_nurse">OR Nurse</option>
+                          <option value="or_supervisor">OR Supervisor</option>
+                          <option value="infection_control">Infection Control</option>
+                          <option value="hospital_admin">Hospital Admin</option>
+                          <option value="system_admin">System Admin</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Employee ID</label>
+                        <input type="text" value={editForm.employee_id}
+                          onChange={e => setEditForm({...editForm, employee_id: e.target.value})}
+                          placeholder="e.g. EMP001"
+                          className="input-field text-sm" />
+                      </div>
                     </div>
-                    <div>
-                      <label className="text-xs text-gray-500">Department</label>
-                      <input value={editForm.department || ''} onChange={e => setEditForm({...editForm, department: e.target.value})} className="input-field text-sm" placeholder="e.g. CSSD" />
+
+                    {/* Password section — own account only */}
+                    <div className="border-t border-brand-200 pt-3 mb-3">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Lock size={13} className="text-brand-500" />
+                        <label className="text-xs font-medium text-gray-700">
+                          Change Password <span className="text-gray-400 font-normal">(leave blank to keep current)</span>
+                        </label>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">New Password</label>
+                          <div className="relative">
+                            <input
+                              type={showPw ? 'text' : 'password'}
+                              value={newPassword}
+                              onChange={e => { setNewPassword(e.target.value); setPwError('') }}
+                              placeholder="Min. 8 characters"
+                              className="input-field text-sm pr-8" />
+                            <button type="button" onClick={() => setShowPw(!showPw)}
+                              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                              {showPw ? <EyeOff size={13} /> : <Eye size={13} />}
+                            </button>
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">Confirm Password</label>
+                          <input
+                            type={showPw ? 'text' : 'password'}
+                            value={confirmPassword}
+                            onChange={e => { setConfirmPassword(e.target.value); setPwError('') }}
+                            placeholder="Repeat password"
+                            className="input-field text-sm" />
+                        </div>
+                      </div>
+                      {pwError && (
+                        <p className="text-xs text-red-600 mt-1.5 bg-red-50 px-2 py-1 rounded">{pwError}</p>
+                      )}
+                      {saveMsg && (
+                        <p className="text-xs text-green-600 mt-1.5 font-medium">{saveMsg}</p>
+                      )}
                     </div>
-                    <div>
-                      <label className="text-xs text-gray-500">Employee ID</label>
-                      <input value={editForm.employee_id || ''} onChange={e => setEditForm({...editForm, employee_id: e.target.value})} className="input-field text-sm" placeholder="e.g. EMP001" />
+
+                    <div className="flex gap-2">
+                      <button onClick={() => setEditingId(null)}
+                        className="btn-secondary text-sm px-3 py-1.5">
+                        Cancel
+                      </button>
+                      <button onClick={() => saveEdit(p.id)} disabled={saving}
+                        className="btn-primary text-sm px-4 py-1.5">
+                        {saving ? 'Saving…' : <><Save size={13} /> Save Changes</>}
+                      </button>
                     </div>
                   </div>
-                  <div className="flex gap-2">
-                    <button onClick={() => setEditingId(null)} className="btn-secondary text-sm px-3 py-1.5">Cancel</button>
-                    <button onClick={() => saveEdit(p.id)} disabled={saving} className="btn-primary text-sm px-3 py-1.5">
-                      {saving ? 'Saving…' : 'Save'}
+                ) : (
+                  /* Normal row view */
+                  <div className="flex items-center gap-3 px-4 py-3">
+                    <button
+                      onClick={() => isMe && p.qr_code ? setViewingQR(p) : undefined}
+                      className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 transition-colors ${
+                        isMe
+                          ? 'bg-brand-100 text-brand-700 hover:bg-brand-200 cursor-pointer'
+                          : 'bg-gray-100 text-gray-500 cursor-default'
+                      }`}
+                      title={isMe && p.qr_code ? 'View your QR code' : ''}>
+                      {p.full_name.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase()}
                     </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex items-center gap-3 px-4 py-3">
-                  <button
-                    onClick={() => p.id === currentUser && p.qr_code ? setViewingQR(p) : null}
-                    className="w-9 h-9 bg-brand-50 rounded-full flex items-center justify-center text-brand-600 text-xs font-bold flex-shrink-0 hover:bg-brand-100 transition-colors"
-                    title={p.id === currentUser ? 'View your QR code' : ''}
-                  >
-                    {p.full_name.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase()}
-                  </button>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium text-gray-800 flex items-center gap-2">
-                      {p.full_name}
-                      {p.id === currentUser && <span className="text-[10px] bg-brand-100 text-brand-600 px-1.5 py-0.5 rounded font-medium">You</span>}
+
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-gray-800 flex items-center gap-2">
+                        {p.full_name}
+                        {isMe && (
+                          <span className="text-[10px] bg-brand-100 text-brand-600 px-1.5 py-0.5 rounded font-medium">
+                            You
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs text-gray-400 capitalize flex items-center gap-2 flex-wrap">
+                        <span>{p.role.replace(/_/g, ' ')}</span>
+                        {p.department && <span>· {p.department}</span>}
+                        {p.employee_id && <span>· {p.employee_id}</span>}
+                        {p.qr_code && (
+                          <span className="flex items-center gap-1 text-green-600">
+                            <QrCode size={10} /> QR Paired
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <div className="text-xs text-gray-400 capitalize flex items-center gap-2">
-                      {p.role.replace(/_/g, ' ')}
-                      {p.department && <span>· {p.department}</span>}
-                      {p.qr_code && (
-                        <span className="flex items-center gap-1 text-green-600">
-                          <QrCode size={10} /> QR Paired
+
+                    <div className="flex gap-1 items-center flex-shrink-0">
+                      {/* View own QR */}
+                      {isMe && p.qr_code && (
+                        <button onClick={() => setViewingQR(p)}
+                          className="p-2 text-gray-400 hover:text-brand-500 hover:bg-brand-50 rounded-lg transition-colors"
+                          title="View your QR code">
+                          <QrCode size={15} />
+                        </button>
+                      )}
+
+                      {/* Pair QR — only for admins/supervisors on others, or self */}
+                      {!p.qr_code && (
+                        <button onClick={() => startPairing(p.id)}
+                          className="flex items-center gap-1 text-xs text-brand-500 font-medium px-2.5 py-1.5 border border-brand-300 rounded-lg hover:bg-brand-50 transition-colors"
+                          title="Pair QR code">
+                          <Link2 size={12} /> Pair QR
+                        </button>
+                      )}
+                      {p.qr_code && !isMe && (
+                        <span title={`QR paired`}>
+                          <Shield size={13} className="text-green-400 mx-2" />
                         </span>
+                      )}
+
+                      {/* Edit — ONLY visible on own row */}
+                      {isMe && (
+                        <button onClick={() => startEdit(p)}
+                          className="p-2 text-gray-400 hover:text-brand-500 hover:bg-brand-50 rounded-lg transition-colors"
+                          title="Edit your profile">
+                          <Edit2 size={14} />
+                        </button>
                       )}
                     </div>
                   </div>
-                  <div className="flex gap-1 items-center flex-shrink-0">
-                    {/* View own QR */}
-                    {p.id === currentUser && p.qr_code && (
-                      <button onClick={() => setViewingQR(p)}
-                        className="p-2 text-gray-400 hover:text-brand-500 hover:bg-brand-50 rounded-lg transition-colors"
-                        title="View your QR code">
-                        <QrCode size={15} />
-                      </button>
-                    )}
-                    {/* Pair QR */}
-                    {!p.qr_code ? (
-                      <button onClick={() => startPairing(p.id)}
-                        className="flex items-center gap-1 text-xs text-brand-500 font-medium px-2.5 py-1.5 border border-brand-300 rounded-lg hover:bg-brand-50 transition-colors"
-                        title="Pair QR code">
-                        <Link2 size={12} /> Pair QR
-                      </button>
-                    ) : (
-                      <span className="text-xs text-gray-300 px-2" title={`QR: ${p.qr_code}`}>
-                        <Shield size={13} className="text-green-400" />
-                      </span>
-                    )}
-                    {/* Edit */}
-                    <button onClick={() => {
-                      setEditingId(p.id)
-                      setEditForm({ full_name: p.full_name, role: p.role, department: p.department || '', employee_id: p.employee_id || '' })
-                    }} className="p-2 text-gray-400 hover:text-brand-500 hover:bg-brand-50 rounded-lg transition-colors" title="Edit staff">
-                      <Edit2 size={14} />
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          ))}
+                )}
+              </div>
+            )
+          })}
         </div>
 
         {/* Pair QR Modal */}
@@ -254,7 +369,7 @@ export default function StaffPage() {
               <div className="p-5 border-b border-gray-100">
                 <h2 className="font-semibold text-gray-800">Pair QR Code</h2>
                 <p className="text-sm text-gray-500 mt-0.5">
-                  Pairing QR to: <strong>{staff.find(s => s.id === pairingId)?.full_name}</strong>
+                  Pairing to: <strong>{staff.find(s => s.id === pairingId)?.full_name}</strong>
                 </p>
                 <p className="text-xs text-amber-600 mt-1 bg-amber-50 px-2 py-1 rounded">
                   ⚠ This action can only be done once per staff member.
@@ -263,25 +378,31 @@ export default function StaffPage() {
               <div className="p-5">
                 {!pairConfirming ? (
                   <>
-                    <p className="text-sm text-gray-600 mb-3">Select one of the available QR codes:</p>
+                    <p className="text-sm text-gray-600 mb-3">Select an available QR code:</p>
                     {qrPool.length === 0 ? (
-                      <p className="text-sm text-gray-400 text-center py-6">No QR codes available in the pool.</p>
+                      <p className="text-sm text-gray-400 text-center py-6">No QR codes available.</p>
                     ) : (
                       <div className="space-y-1.5 max-h-72 overflow-y-auto">
                         {qrPool.map(q => (
                           <button key={q.id} onClick={() => setSelectedQR(q.code)}
                             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left border-2 transition-all ${
-                              selectedQR === q.code ? 'border-brand-400 bg-brand-50' : 'border-gray-100 hover:border-gray-200'
+                              selectedQR === q.code
+                                ? 'border-brand-400 bg-brand-50'
+                                : 'border-gray-100 hover:border-gray-200'
                             }`}>
                             <QrCode size={16} className={selectedQR === q.code ? 'text-brand-500' : 'text-gray-400'} />
                             <span className="font-mono text-sm text-gray-700">{q.code}</span>
-                            {selectedQR === q.code && <span className="ml-auto text-xs text-brand-600 font-medium">Selected</span>}
+                            {selectedQR === q.code && (
+                              <span className="ml-auto text-xs text-brand-600 font-medium">Selected</span>
+                            )}
                           </button>
                         ))}
                       </div>
                     )}
                     <div className="flex gap-2 mt-4">
-                      <button onClick={() => setPairingId(null)} className="btn-secondary flex-1 justify-center text-sm">Cancel</button>
+                      <button onClick={() => setPairingId(null)} className="btn-secondary flex-1 justify-center text-sm">
+                        Cancel
+                      </button>
                       <button onClick={() => setPairConfirming(true)} disabled={!selectedQR}
                         className="btn-primary flex-1 justify-center text-sm">
                         Continue →
@@ -290,25 +411,25 @@ export default function StaffPage() {
                   </>
                 ) : (
                   <div className="text-center">
-                    <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <Link2 size={28} className="text-amber-600" />
+                    <div className="w-14 h-14 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <Link2 size={26} className="text-amber-600" />
                     </div>
                     <h3 className="font-semibold text-gray-800 mb-2">Confirm Pairing</h3>
-                    <p className="text-sm text-gray-600 mb-1">
-                      You are about to pair:
-                    </p>
-                    <p className="font-mono text-sm bg-gray-50 rounded-lg px-3 py-2 mb-1 text-gray-800">{selectedQR}</p>
+                    <p className="text-sm text-gray-600 mb-1">Pairing code:</p>
+                    <p className="font-mono text-sm bg-gray-50 rounded-lg px-3 py-2 mb-1">{selectedQR}</p>
                     <p className="text-sm text-gray-600 mb-4">
                       to <strong>{staff.find(s => s.id === pairingId)?.full_name}</strong>
                     </p>
                     <p className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg mb-4">
-                      This cannot be undone. Are you sure?
+                      This cannot be undone.
                     </p>
                     <div className="flex gap-2">
-                      <button onClick={() => setPairConfirming(false)} className="btn-secondary flex-1 justify-center text-sm">Back</button>
-                      <button onClick={confirmPair} disabled={saving}
+                      <button onClick={() => setPairConfirming(false)} className="btn-secondary flex-1 justify-center text-sm">
+                        Back
+                      </button>
+                      <button onClick={confirmPair} disabled={pairSaving}
                         className="btn-primary flex-1 justify-center text-sm bg-green-600 hover:bg-green-700">
-                        {saving ? 'Pairing…' : '✓ Confirm Pair'}
+                        {pairSaving ? 'Pairing…' : '✓ Confirm'}
                       </button>
                     </div>
                   </div>
@@ -319,12 +440,14 @@ export default function StaffPage() {
         )}
 
         {/* View own QR Modal */}
-        {viewingQR && viewingQR.id === currentUser && (
+        {viewingQR && viewingQR.id === currentUserId && (
           <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-2xl w-full max-w-xs">
               <div className="p-4 border-b border-gray-100 flex items-center justify-between">
                 <h2 className="font-semibold text-gray-800">Your QR Badge</h2>
-                <button onClick={() => setViewingQR(null)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+                <button onClick={() => setViewingQR(null)} className="text-gray-400 hover:text-gray-600">
+                  <X size={18} />
+                </button>
               </div>
               <div className="p-5 text-center">
                 <div className="bg-white border-2 border-gray-100 rounded-xl p-3 mb-3 inline-block">
@@ -337,12 +460,16 @@ export default function StaffPage() {
                   />
                 </div>
                 <p className="font-semibold text-gray-800">{viewingQR.full_name}</p>
-                <p className="text-xs text-gray-400 capitalize mt-0.5">{viewingQR.role.replace(/_/g,' ')} · {viewingQR.department}</p>
-                <p className="font-mono text-xs text-gray-500 mt-2 bg-gray-50 rounded px-2 py-1">{viewingQR.qr_code}</p>
+                <p className="text-xs text-gray-400 capitalize mt-0.5">
+                  {viewingQR.role.replace(/_/g,' ')} · {viewingQR.department}
+                </p>
+                <p className="font-mono text-xs text-gray-500 mt-2 bg-gray-50 rounded px-2 py-1">
+                  {viewingQR.qr_code}
+                </p>
                 <div className="flex gap-2 mt-4">
                   <button onClick={() => window.open(getQRUrl(viewingQR.qr_code!), '_blank')}
                     className="btn-secondary flex-1 justify-center text-sm">
-                    <Download size={14} /> Download
+                    <Download size={14} /> Save
                   </button>
                   <button onClick={() => window.print()}
                     className="btn-primary flex-1 justify-center text-sm">
