@@ -265,8 +265,6 @@ function AddItemModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
             { key: 'name', label: 'Item Name *', placeholder: 'e.g. Major Set 001' },
             { key: 'qr_code', label: 'QR Code *', placeholder: 'e.g. MAJOR-003', mono: true },
             { key: 'description', label: 'Description', placeholder: 'Brief description…' },
-            { key: 'location', label: 'Location', placeholder: 'e.g. Storage' },
-            { key: 'shelf_location', label: 'Shelf Location', placeholder: 'e.g. Shelf A1' },
           ].map(f => (
             <div key={f.key}>
               <label className="block text-sm font-medium text-gray-700 mb-1">{f.label}</label>
@@ -276,6 +274,31 @@ function AddItemModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
                 className={`input-field ${(f as any).mono ? 'font-mono' : ''}`} />
             </div>
           ))}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Shelf Location</label>
+            <div className="flex gap-2 flex-wrap mb-2">
+              {[
+                'Sterile Room Shelf A','Sterile Room Shelf B','Sterile Room Shelf C',
+                'Sterile Room Shelf D','Sterile Room Shelf E','Sterile Room Shelf F',
+                'Sterile Room Shelf G','Sterile Room Shelf H','Sterile Room Shelf I',
+                'Sterile Room Shelf J'
+              ].map(s => (
+                <button key={s} type="button"
+                  onClick={() => setForm(f => ({ ...f, shelf_location: s, location: 'Storage' }))}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
+                    form.shelf_location === s
+                      ? 'bg-brand-500 text-white border-brand-500'
+                      : 'bg-white text-gray-600 border-gray-200 hover:border-brand-300'
+                  }`}>
+                  {s}
+                </button>
+              ))}
+            </div>
+            <input type="text" value={form.shelf_location}
+              onChange={e => setForm(f => ({ ...f, shelf_location: e.target.value, location: 'Storage' }))}
+              placeholder="Or type a custom shelf location…"
+              className="input-field text-sm" />
+          </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Item Type</label>
             <select value={form.item_type} onChange={e => setForm(f => ({ ...f, item_type: e.target.value as ItemType }))} className="input-field">
