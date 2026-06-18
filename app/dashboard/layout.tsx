@@ -29,9 +29,9 @@ const NAV: NavSection[] = [
     { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   ]},
   { section: 'CSSD Workflow', items: [
-    { href: '/receiving', label: 'Receiving Area', icon: Inbox, highlight: true },
     { href: '/dispensing', label: 'Dispensing Area', icon: Send, highlight: true },
     { href: '/or-verification', label: 'OR Verification', icon: ClipboardCheck, highlight: true, badge: 'or' },
+    { href: '/receiving', label: 'Receiving Area', icon: Inbox, highlight: true },
   ]},
   { section: 'Management', items: [
     { href: '/inventory', label: 'Inventory', icon: Package },
@@ -128,15 +128,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     <div className="flex flex-col h-full">
       <div className="px-4 py-5 border-b border-white/10">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 bg-brand-400 rounded-xl flex items-center justify-center">
+          <div className="w-9 h-9 bg-brand-400 rounded-xl flex items-center justify-center flex-shrink-0">
             <Shield size={18} className="text-white" />
           </div>
           <div>
             <div className="flex items-baseline gap-1.5">
-              <span className="text-white font-semibold text-sm">SterileTrack</span>
+              <span className="text-white font-bold text-lg leading-tight">SterileTrack</span>
               <span className="text-white/25 text-[10px] italic">by Yoly</span>
             </div>
-            <div className="text-white/40 text-xs">CSSD Management</div>
           </div>
         </div>
       </div>
