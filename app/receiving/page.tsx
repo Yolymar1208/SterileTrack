@@ -4,16 +4,15 @@ import { useState, useEffect, useRef } from 'react'
 import AppLayout from '@/app/dashboard/layout'
 import { createClient } from '@/lib/supabase'
 import {
-  Inbox, QrCode, CheckCircle2, AlertCircle, Loader2, Package, Search,
+  Inbox, Search, CheckCircle2, AlertCircle, Loader2, Package,
   ClipboardCheck, PackageCheck, Flame, Archive, Edit3, Plus, Trash2,
-  Save, X, ArrowRight
+  Save, X, ArrowRight, Camera, QrCode, User
 } from 'lucide-react'
-import { InventoryItem, SetContent, STATUS_CONFIG } from '@/lib/types'
+import { InventoryItem, SetContent, Profile } from '@/lib/types'
 import { format } from 'date-fns'
+import CameraQRScanner from '@/components/CameraQRScanner'
 
-interface ChecklistItem extends SetContent {
-  checked: boolean
-}
+interface ChecklistItem extends SetContent { checked: boolean }
 
 export default function ReceivingPage() {
   const supabase = createClient()
@@ -25,9 +24,16 @@ export default function ReceivingPage() {
   const [remarks, setRemarks] = useState('')
   const [missingItems, setMissingItems] = useState('')
   const [shelfLocation, setShelfLocation] = useState('')
-
   const [editingList, setEditingList] = useState(false)
   const [newInstr, setNewInstr] = useState({ name: '', qty: 1 })
+
+  // Returned-by staff
+  const [returnedByStaff, setReturnedByStaff] = useState<Profile | null>(null)
+  const [returnedBySearch, setReturnedBySearch] = useState('')
+  const [returnedByResults, setReturnedByResults] = useState<Profile[]>([])
+  const [returnedByQr, setReturnedByQr] = useState('')
+  const [showReturnCamera, setShowReturnCamera] = useState(false)
+  const [showMainCamera, setShowMainCamera] = useState(false)
 
   const [loading, setLoading] = useState(false)
   const [searching, setSearching] = useState(false)
@@ -54,7 +60,7 @@ export default function ReceivingPage() {
   async function lookupItem(code: string) {
     if (!code.trim()) return
     setSearching(true); setError(''); setSuccess(''); setItem(null); setContents([])
-    setRemarks(''); setMissingItems(''); setShelfLocation('')
+    setRemarks(''); setMissingItems(''); setShelfLocation(''); setReturnedByStaff(null)
 
     let found: InventoryItem | null = null
     const { data } = await supabase.from('inventory_items').select('*').eq('qr_code', code.trim().toUpperCase()).single()
@@ -63,19 +69,29 @@ export default function ReceivingPage() {
       const { data: d2 } = await supabase.from('inventory_items').select('*').ilike('qr_code', code.trim()).single()
       if (d2) found = d2
     }
-
-    if (!found) {
-      setError(`No item found for "${code.trim()}".`); setSearching(false); return
-    }
+    if (!found) { setError(`No item found for "${code.trim()}".`); setSearching(false); return }
 
     setItem(found)
     setRemarks(found.current_remarks || '')
     setShelfLocation(found.shelf_location || '')
 
-    const { data: cList } = await supabase
-      .from('set_contents').select('*').eq('set_id', found.id).order('sort_order')
+    const { data: cList } = await supabase.from('set_contents').select('*').eq('set_id', found.id).order('sort_order')
     setContents((cList || []).map(c => ({ ...c, checked: false })))
     setSearching(false)
+  }
+
+  async function searchReturnedBy(q: string) {
+    setReturnedBySearch(q)
+    if (!q.trim()) { setReturnedByResults([]); return }
+    const { data } = await supabase.from('profiles').select('*').ilike('full_name', `%${q}%`).limit(5)
+    setReturnedByResults(data || [])
+  }
+
+  async function lookupReturnedByQr(qr: string) {
+    if (!qr.trim()) return
+    const { data } = await supabase.from('profiles').select('*').eq('qr_code', qr.trim()).single()
+    if (data) { setReturnedByStaff(data); setReturnedByQr(''); setError('') }
+    else setError(`No staff found for QR "${qr.trim()}"`)
   }
 
   function toggleCheck(id: string) {
@@ -89,23 +105,24 @@ export default function ReceivingPage() {
   async function addInstrument() {
     if (!item || !newInstr.name.trim()) return
     const { data } = await supabase.from('set_contents').insert({
-      set_id: item.id,
-      instrument_name: newInstr.name.trim(),
-      quantity: newInstr.qty,
-      sort_order: contents.length + 1,
+      set_id: item.id, instrument_name: newInstr.name.trim(),
+      quantity: newInstr.qty, sort_order: contents.length + 1,
     }).select().single()
     if (data) {
       setContents(c => [...c, { ...data, checked: true }])
+      await logAudit('set_contents_updated', `Added during receiving: ${newInstr.qty}× ${newInstr.name.trim()}`)
       setNewInstr({ name: '', qty: 1 })
     }
   }
 
   async function removeInstrument(id: string) {
+    const target = contents.find(c => c.id === id)
     await supabase.from('set_contents').delete().eq('id', id)
     setContents(c => c.filter(i => i.id !== id))
+    if (target) await logAudit('set_contents_updated', `Removed during receiving: ${target.quantity}× ${target.instrument_name}`)
   }
 
-  async function logAuditEntry(action: string, notes?: string) {
+  async function logAudit(action: string, notes?: string) {
     if (!item || !userId) return
     await supabase.from('audit_logs').insert({
       item_id: item.id, item_name: item.name, item_qr_code: item.qr_code,
@@ -115,17 +132,25 @@ export default function ReceivingPage() {
     })
   }
 
-  // STEP 1 — Receive at CSSD
+  // STEP 1 — Receive
   async function markReceived() {
     if (!item || !userId) return
     setLoading(true); setError('')
+
+    const returnedBy = returnedByStaff
+      ? `Returned by: ${returnedByStaff.full_name} (${returnedByStaff.qr_code || 'no QR'})`
+      : `Returned by: Same staff (${item.last_user_name || 'unknown'})`
+
     await supabase.from('inventory_items').update({
       status: 'received', location: 'CSSD Receiving Area',
       last_user_id: userId, last_user_name: userName,
       current_remarks: remarks || null,
       updated_at: new Date().toISOString(),
     }).eq('id', item.id)
-    await logAuditEntry('received_at_cssd', remarks)
+
+    await logAudit('received_at_cssd',
+      `${returnedBy}. ${remarks || ''}${missingItems ? ' Missing: ' + missingItems : ''}`.trim())
+
     if (missingItems) {
       await supabase.from('alerts').insert({
         alert_type: 'missing_items', severity: 'critical',
@@ -142,17 +167,16 @@ export default function ReceivingPage() {
   async function markPacked() {
     if (!item || !userId) return
     setLoading(true); setError('')
-
-    const checkedCount = contents.filter(c => c.checked).length
-    const totalCount = contents.length
-    const inspectionNote = `Inspection: ${checkedCount}/${totalCount} items verified. ${remarks || ''}`
+    const checked = contents.filter(c => c.checked).length
+    const total = contents.length
+    const inspNote = `Inspection: ${checked}/${total} items verified. ${remarks || ''}`
 
     await supabase.from('inspections').insert({
       item_id: item.id, item_name: item.name,
       inspected_by_id: userId, inspected_by_name: userName,
-      completeness_passed: checkedCount === totalCount && totalCount > 0,
+      completeness_passed: checked === total && total > 0,
       functionality_passed: true, cleanliness_passed: true,
-      remarks: remarks, missing_items: missingItems || null,
+      remarks, missing_items: missingItems || null,
     })
 
     await supabase.from('inventory_items').update({
@@ -162,13 +186,12 @@ export default function ReceivingPage() {
       updated_at: new Date().toISOString(),
     }).eq('id', item.id)
 
-    await logAuditEntry('packed_for_sterilization', inspectionNote)
-
+    await logAudit('packed_for_sterilization', inspNote)
     setSuccess('Set packed and ready for sterilization 🔥'); setLoading(false)
     await lookupItem(item.qr_code)
   }
 
-  // STEP 3 — Confirm Sterile (tape check)
+  // STEP 3 — Confirm sterile
   async function confirmSterile() {
     if (!item || !userId || !shelfLocation.trim()) {
       if (!shelfLocation.trim()) setError('Please enter a shelf location.')
@@ -182,20 +205,18 @@ export default function ReceivingPage() {
       status: 'sterile', location: 'Storage', shelf_location: shelfLocation.trim(),
       sterilization_date: now.toISOString(), expiry_date: expiry.toISOString(),
       last_user_id: userId, last_user_name: userName,
-      current_remarks: null,
-      updated_at: now.toISOString(),
+      current_remarks: null, updated_at: now.toISOString(),
     }).eq('id', item.id)
 
-    await logAuditEntry('placed_on_shelf', `Sterilization tape verified. Shelf: ${shelfLocation}. ${remarks || ''}`)
-
-    setSuccess(`Set verified sterile and placed on ${shelfLocation} ✓`); setLoading(false)
+    await logAudit('placed_on_shelf', `Sterilization tape verified. Shelf: ${shelfLocation}. ${remarks || ''}`)
+    setSuccess(`Verified sterile and placed on ${shelfLocation} ✓`); setLoading(false)
     setTimeout(() => {
-      setItem(null); setQrInput(''); setContents([]); setRemarks(''); setShelfLocation(''); setSuccess('')
+      setItem(null); setQrInput(''); setContents([])
+      setRemarks(''); setShelfLocation(''); setSuccess('')
       inputRef.current?.focus()
     }, 2000)
   }
 
-  // Step indicator
   function getCurrentStep(): 1 | 2 | 3 {
     if (!item) return 1
     if (item.status === 'received') return 2
@@ -203,7 +224,6 @@ export default function ReceivingPage() {
     return 1
   }
   const step = getCurrentStep()
-  const cfg = item ? STATUS_CONFIG[item.status] : null
 
   return (
     <AppLayout>
@@ -212,9 +232,7 @@ export default function ReceivingPage() {
           <h1 className="text-xl font-semibold text-gray-800 flex items-center gap-2">
             <Inbox size={22} className="text-brand-500" /> CSSD Receiving Area
           </h1>
-          <p className="text-sm text-gray-500 mt-1">
-            Receive instruments → Inspect & Pack → Sterilize → Place on Shelf
-          </p>
+          <p className="text-sm text-gray-500 mt-1">Receive → Inspect & Pack → Sterilize → Place on Shelf</p>
         </div>
 
         {/* QR scan */}
@@ -226,7 +244,10 @@ export default function ReceivingPage() {
               onKeyDown={e => e.key === 'Enter' && lookupItem(qrInput)}
               placeholder="e.g. MAJOR-001, ORTHO-002…"
               className="input-field flex-1 text-base font-mono" />
-            <button onClick={() => lookupItem(qrInput)} disabled={!qrInput.trim() || searching} className="btn-primary px-5">
+            <button onClick={() => setShowMainCamera(true)} className="btn-secondary px-3" title="Scan with camera">
+              <Camera size={16} />
+            </button>
+            <button onClick={() => lookupItem(qrInput)} disabled={!qrInput.trim() || searching} className="btn-primary px-4">
               {searching ? <Loader2 size={16} className="animate-spin" /> : <><Search size={15} /> Find</>}
             </button>
           </div>
@@ -247,7 +268,7 @@ export default function ReceivingPage() {
 
         {item && (
           <>
-            {/* Item header */}
+            {/* Item header + step indicator */}
             <div className="card p-5 mb-4">
               <div className="flex items-start gap-3 mb-4">
                 <div className="w-11 h-11 bg-brand-50 rounded-2xl flex items-center justify-center flex-shrink-0">
@@ -255,13 +276,10 @@ export default function ReceivingPage() {
                 </div>
                 <div className="flex-1">
                   <h2 className="font-semibold text-gray-800 text-lg">{item.name}</h2>
-                  <p className="text-sm text-gray-500">{item.description || item.item_type.replace(/_/g, ' ')}</p>
-                  <p className="text-xs text-gray-400 mt-1 font-mono">{item.qr_code}</p>
+                  <p className="text-sm text-gray-500">{item.description || item.item_type.replace(/_/g,' ')}</p>
+                  <p className="text-xs text-gray-400 mt-0.5 font-mono">{item.qr_code}</p>
                 </div>
-                {cfg && <span className="text-xs font-medium px-2.5 py-1 rounded-full" style={{ background: cfg.bg, color: cfg.color }}>{cfg.label}</span>}
               </div>
-
-              {/* Workflow step indicator */}
               <div className="flex items-center gap-1">
                 {[
                   { n: 1, label: 'Receive & Inspect', icon: ClipboardCheck },
@@ -286,117 +304,168 @@ export default function ReceivingPage() {
               </div>
             </div>
 
-            {/* STEP 1 & 2: Inspection checklist */}
+            {/* Step 1 & 2: Checklist + Returned By */}
             {(step === 1 || step === 2) && (
-              <div className="card p-5 mb-4">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="font-medium text-gray-800 text-sm flex items-center gap-2">
-                    <ClipboardCheck size={15} className="text-brand-500" /> Inspection Checklist
-                    <span className="text-xs font-normal text-gray-400">
-                      ({contents.filter(c => c.checked).length}/{contents.length} checked)
-                    </span>
-                  </h3>
-                  <div className="flex gap-2">
-                    <button onClick={() => setEditingList(!editingList)} className="text-xs text-brand-500 font-medium flex items-center gap-1">
+              <>
+                {/* Checklist */}
+                <div className="card p-5 mb-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-medium text-gray-800 text-sm flex items-center gap-2">
+                      <ClipboardCheck size={15} className="text-brand-500" /> Inspection Checklist
+                      <span className="text-xs font-normal text-gray-400">
+                        ({contents.filter(c => c.checked).length}/{contents.length})
+                      </span>
+                    </h3>
+                    <button onClick={() => setEditingList(!editingList)}
+                      className="text-xs text-brand-500 font-medium flex items-center gap-1">
                       {editingList ? <><X size={11} /> Done</> : <><Edit3 size={11} /> Edit List</>}
                     </button>
                   </div>
-                </div>
 
-                {contents.length === 0 && !editingList && (
-                  <div className="text-center py-6 bg-gray-50 rounded-xl">
-                    <p className="text-sm text-gray-500">No instruments in this set's list yet.</p>
-                    <button onClick={() => setEditingList(true)} className="text-xs text-brand-500 font-medium mt-2">
-                      + Add instruments to the checklist
-                    </button>
-                  </div>
-                )}
+                  {contents.length === 0 && !editingList && (
+                    <div className="text-center py-6 bg-gray-50 rounded-xl">
+                      <p className="text-sm text-gray-500">No instruments listed yet.</p>
+                      <button onClick={() => setEditingList(true)} className="text-xs text-brand-500 font-medium mt-2">+ Add instruments</button>
+                    </div>
+                  )}
 
-                {contents.length > 0 && (
-                  <>
-                    {!editingList && (
-                      <button onClick={checkAll} className="text-xs text-brand-500 font-medium mb-2">
-                        {contents.every(c => c.checked) ? 'Uncheck all' : 'Check all'}
-                      </button>
-                    )}
-                    <div className="space-y-1.5 max-h-96 overflow-y-auto">
-                      {contents.map(c => (
-                        <div key={c.id} className={`flex items-center gap-3 p-2.5 rounded-lg transition-colors ${
-                          editingList ? 'bg-gray-50' : c.checked ? 'bg-green-50' : 'bg-white border border-gray-100 hover:bg-gray-50'
-                        }`}>
-                          {!editingList && (
-                            <input type="checkbox" checked={c.checked} onChange={() => toggleCheck(c.id)}
-                              className="w-5 h-5 rounded text-brand-500 focus:ring-brand-400 flex-shrink-0" />
-                          )}
-                          <div className="flex-1">
-                            <div className={`text-sm ${c.checked && !editingList ? 'text-green-700 font-medium' : 'text-gray-700'}`}>
-                              {c.instrument_name}
-                            </div>
+                  {contents.length > 0 && (
+                    <>
+                      {!editingList && (
+                        <button onClick={checkAll} className="text-xs text-brand-500 font-medium mb-2">
+                          {contents.every(c => c.checked) ? 'Uncheck all' : 'Check all'}
+                        </button>
+                      )}
+                      <div className="space-y-1.5 max-h-72 overflow-y-auto">
+                        {contents.map(c => (
+                          <div key={c.id} className={`flex items-center gap-3 p-2.5 rounded-lg transition-colors ${
+                            editingList ? 'bg-gray-50' : c.checked ? 'bg-green-50' : 'bg-white border border-gray-100'
+                          }`}>
+                            {!editingList && (
+                              <input type="checkbox" checked={c.checked} onChange={() => toggleCheck(c.id)}
+                                className="w-5 h-5 rounded text-brand-500 flex-shrink-0" />
+                            )}
+                            <div className="flex-1 text-sm text-gray-700">{c.instrument_name}</div>
+                            <span className="text-xs font-mono bg-gray-100 px-2 py-0.5 rounded text-gray-600">×{c.quantity}</span>
+                            {editingList && (
+                              <button onClick={() => removeInstrument(c.id)} className="text-red-400 hover:text-red-600">
+                                <Trash2 size={13} />
+                              </button>
+                            )}
                           </div>
-                          <span className="text-xs font-mono bg-gray-100 px-2 py-0.5 rounded text-gray-600">
-                            ×{c.quantity}
-                          </span>
-                          {editingList && (
-                            <button onClick={() => removeInstrument(c.id)} className="text-red-400 hover:text-red-600">
-                              <Trash2 size={13} />
-                            </button>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                )}
+                        ))}
+                      </div>
+                    </>
+                  )}
 
-                {editingList && (
-                  <div className="mt-3 flex gap-2 items-end">
-                    <div className="flex-1">
-                      <label className="text-xs text-gray-500">Instrument name</label>
-                      <input type="text" value={newInstr.name}
-                        onChange={e => setNewInstr({...newInstr, name: e.target.value})}
-                        onKeyDown={e => e.key === 'Enter' && addInstrument()}
-                        placeholder="e.g. Mayo Scissors 6&quot;"
-                        className="input-field" />
+                  {editingList && (
+                    <div className="mt-3 flex gap-2 items-end">
+                      <div className="flex-1">
+                        <label className="text-xs text-gray-500">Instrument name</label>
+                        <input type="text" value={newInstr.name}
+                          onChange={e => setNewInstr({...newInstr, name: e.target.value})}
+                          onKeyDown={e => e.key === 'Enter' && addInstrument()}
+                          placeholder='e.g. Allis Forceps' className="input-field" />
+                      </div>
+                      <div className="w-20">
+                        <label className="text-xs text-gray-500">Qty</label>
+                        <input type="number" min={1} value={newInstr.qty}
+                          onChange={e => setNewInstr({...newInstr, qty: parseInt(e.target.value) || 1})}
+                          className="input-field" />
+                      </div>
+                      <button onClick={addInstrument} disabled={!newInstr.name.trim()} className="btn-primary px-3 py-2 text-sm">
+                        <Plus size={14} />
+                      </button>
                     </div>
-                    <div className="w-20">
-                      <label className="text-xs text-gray-500">Qty</label>
-                      <input type="number" min={1} value={newInstr.qty}
-                        onChange={e => setNewInstr({...newInstr, qty: parseInt(e.target.value) || 1})}
-                        className="input-field" />
-                    </div>
-                    <button onClick={addInstrument} disabled={!newInstr.name.trim()} className="btn-primary px-3 py-2 text-sm">
-                      <Plus size={14} />
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Remarks (always visible if there's an item) */}
-            {(step === 1 || step === 2) && (
-              <div className="card p-5 mb-4 space-y-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Remarks <span className="text-gray-400 font-normal">(optional)</span>
-                  </label>
-                  <textarea value={remarks} onChange={e => setRemarks(e.target.value)}
-                    placeholder="Functionality issues, cleanliness concerns, condition notes…"
-                    rows={2} className="input-field resize-none text-sm" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Missing Items <span className="text-gray-400 font-normal">(if any)</span>
-                  </label>
-                  <input type="text" value={missingItems} onChange={e => setMissingItems(e.target.value)}
-                    placeholder="e.g. 1× Allis Forceps missing"
-                    className="input-field text-sm" />
-                  {missingItems && (
-                    <p className="text-xs text-amber-600 mt-1">⚠ An alert will be created for missing items.</p>
                   )}
                 </div>
-              </div>
+
+                {/* Remarks + Returned By — side by side on wider screens */}
+                <div className="card p-5 mb-4">
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Remarks <span className="text-gray-400 font-normal">(optional)</span>
+                        </label>
+                        <textarea value={remarks} onChange={e => setRemarks(e.target.value)}
+                          placeholder="Functionality issues, condition notes…"
+                          rows={3} className="input-field resize-none text-sm" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Missing Items <span className="text-gray-400 font-normal">(if any)</span>
+                        </label>
+                        <input type="text" value={missingItems} onChange={e => setMissingItems(e.target.value)}
+                          placeholder="e.g. 1× Allis Forceps missing"
+                          className="input-field text-sm" />
+                        {missingItems && <p className="text-xs text-amber-600 mt-1">⚠ Alert will be created.</p>}
+                      </div>
+                    </div>
+
+                    {/* Returned By */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Returned by <span className="text-gray-400 font-normal">(if different from original staff)</span>
+                      </label>
+                      {item.last_user_name && !returnedByStaff && (
+                        <div className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2 mb-2 flex items-center gap-1.5">
+                          <User size={11} />
+                          Default: <strong>{item.last_user_name}</strong> (last user)
+                        </div>
+                      )}
+                      {!returnedByStaff ? (
+                        <div className="space-y-2">
+                          <div className="flex gap-2">
+                            <input type="text" value={returnedByQr}
+                              onChange={e => setReturnedByQr(e.target.value)}
+                              onKeyDown={e => e.key === 'Enter' && lookupReturnedByQr(returnedByQr)}
+                              placeholder="Scan staff QR…"
+                              className="input-field flex-1 font-mono text-sm" />
+                            <button onClick={() => setShowReturnCamera(true)}
+                              className="btn-secondary px-3" title="Scan with camera">
+                              <Camera size={14} />
+                            </button>
+                          </div>
+                          <div className="relative">
+                            <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                            <input type="text" value={returnedBySearch}
+                              onChange={e => searchReturnedBy(e.target.value)}
+                              placeholder="Or search by name…"
+                              className="input-field pl-8 text-sm" />
+                            {returnedByResults.length > 0 && (
+                              <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-100 rounded-xl shadow-lg z-10 max-h-40 overflow-y-auto">
+                                {returnedByResults.map(s => (
+                                  <button key={s.id}
+                                    onClick={() => { setReturnedByStaff(s); setReturnedBySearch(''); setReturnedByResults([]) }}
+                                    className="w-full text-left px-3 py-2 hover:bg-gray-50 text-sm">
+                                    <div className="font-medium text-gray-700">{s.full_name}</div>
+                                    <div className="text-xs text-gray-400">{s.role?.replace(/_/g,' ')}</div>
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="bg-blue-50 border border-blue-200 rounded-xl px-3 py-2.5 flex items-center gap-2">
+                          <User size={14} className="text-blue-500" />
+                          <div className="flex-1">
+                            <div className="text-sm font-medium text-gray-800">{returnedByStaff.full_name}</div>
+                            <div className="text-xs text-gray-500">{returnedByStaff.role?.replace(/_/g,' ')}</div>
+                          </div>
+                          <button onClick={() => setReturnedByStaff(null)} className="text-gray-400 hover:text-gray-600">
+                            <X size={14} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </>
             )}
 
-            {/* STEP 3: Shelf location */}
+            {/* Step 3: Shelf */}
             {step === 3 && (
               <div className="card p-5 mb-4">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -413,8 +482,7 @@ export default function ReceivingPage() {
                   ))}
                 </div>
                 <input type="text" value={shelfLocation} onChange={e => setShelfLocation(e.target.value)}
-                  placeholder="Or type custom shelf location…"
-                  className="input-field text-sm" />
+                  placeholder="Or type custom shelf…" className="input-field text-sm" />
               </div>
             )}
 
@@ -440,6 +508,18 @@ export default function ReceivingPage() {
               )}
             </div>
           </>
+        )}
+
+        {/* Camera scanners */}
+        {showMainCamera && (
+          <CameraQRScanner label="Scan Instrument Set QR"
+            onScan={(code) => { setShowMainCamera(false); setQrInput(code); lookupItem(code) }}
+            onClose={() => setShowMainCamera(false)} />
+        )}
+        {showReturnCamera && (
+          <CameraQRScanner label="Scan Staff QR Badge"
+            onScan={(code) => { setShowReturnCamera(false); lookupReturnedByQr(code) }}
+            onClose={() => setShowReturnCamera(false)} />
         )}
       </div>
     </AppLayout>
