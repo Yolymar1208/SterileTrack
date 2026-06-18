@@ -132,7 +132,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             <Shield size={18} className="text-white" />
           </div>
           <div>
-            <div className="text-white font-semibold text-sm">SterileTrack</div>
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-white font-semibold text-sm">SterileTrack</span>
+              <span className="text-white/25 text-[10px] italic">by Yoly</span>
+            </div>
             <div className="text-white/40 text-xs">CSSD Management</div>
           </div>
         </div>
