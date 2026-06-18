@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import AppLayout from '@/app/dashboard/layout'
 import { createClient } from '@/lib/supabase'
-import { Bell, AlertTriangle, Clock, CheckCircle2, Package } from 'lucide-react'
+import { Bell, AlertTriangle, Clock, CheckCircle2, Package, X } from 'lucide-react'
 import { format } from 'date-fns'
 import Link from 'next/link'
 
@@ -26,6 +26,8 @@ export default function AlertsPage() {
   const [alerts, setAlerts] = useState<Alert[]>([])
   const [loading, setLoading] = useState(true)
   const [showResolved, setShowResolved] = useState(false)
+  const [confirmingId, setConfirmingId] = useState<string | null>(null)
+  const [resolving, setResolving] = useState(false)
 
   useEffect(() => { loadAlerts() }, [showResolved])
 
@@ -39,20 +41,23 @@ export default function AlertsPage() {
   }
 
   async function resolveAlert(id: string) {
+    setResolving(true)
     const { data: { user } } = await supabase.auth.getUser()
     const { data: profile } = await supabase.from('profiles').select('full_name').eq('id', user!.id).single()
     await supabase.from('alerts').update({
       is_resolved: true,
-      resolved_by: profile?.full_name,
+      resolved_by: profile?.full_name || user?.email?.split('@')[0] || 'Staff',
       resolved_at: new Date().toISOString(),
     }).eq('id', id)
+    setResolving(false)
+    setConfirmingId(null)
     loadAlerts()
   }
 
-  const severityConfig = {
-    critical: { color: 'text-red-600', bg: 'bg-red-50 border-red-200', icon: AlertTriangle, iconColor: 'text-red-500' },
-    warning:  { color: 'text-amber-600', bg: 'bg-amber-50 border-amber-200', icon: Clock, iconColor: 'text-amber-500' },
-    info:     { color: 'text-blue-600', bg: 'bg-blue-50 border-blue-200', icon: Bell, iconColor: 'text-blue-500' },
+  const severityConfig: Record<string, any> = {
+    critical: { bg: 'bg-red-50 border-red-200', icon: AlertTriangle, iconColor: 'text-red-500' },
+    warning:  { bg: 'bg-amber-50 border-amber-200', icon: Clock, iconColor: 'text-amber-500' },
+    info:     { bg: 'bg-blue-50 border-blue-200', icon: Bell, iconColor: 'text-blue-500' },
   }
 
   return (
@@ -67,10 +72,7 @@ export default function AlertsPage() {
               {alerts.filter(a => !a.is_resolved).length} active alerts
             </p>
           </div>
-          <button
-            onClick={() => setShowResolved(!showResolved)}
-            className="btn-secondary text-sm px-3 py-2"
-          >
+          <button onClick={() => setShowResolved(!showResolved)} className="btn-secondary text-sm px-3 py-2">
             {showResolved ? 'Hide resolved' : 'Show resolved'}
           </button>
         </div>
@@ -86,15 +88,12 @@ export default function AlertsPage() {
         ) : (
           <div className="space-y-3">
             {alerts.map(alert => {
-              const severity = (severityConfig as any)[alert.severity] || severityConfig.info
-              const SevIcon = severity.icon
+              const cfg = severityConfig[alert.severity] || severityConfig.info
+              const SevIcon = cfg.icon
               return (
-                <div
-                  key={alert.id}
-                  className={`card p-4 border ${severity.bg} ${alert.is_resolved ? 'opacity-60' : ''}`}
-                >
+                <div key={alert.id} className={`card p-4 border ${cfg.bg} ${alert.is_resolved ? 'opacity-60' : ''}`}>
                   <div className="flex items-start gap-3">
-                    <SevIcon size={18} className={`${severity.iconColor} flex-shrink-0 mt-0.5`} />
+                    <SevIcon size={18} className={`${cfg.iconColor} flex-shrink-0 mt-0.5`} />
                     <div className="flex-1 min-w-0">
                       <div className="font-medium text-sm text-gray-800">{alert.title}</div>
                       {alert.body && <p className="text-sm text-gray-600 mt-0.5">{alert.body}</p>}
@@ -102,8 +101,9 @@ export default function AlertsPage() {
                         <span className="text-xs text-gray-400">
                           {format(new Date(alert.created_at), 'MMM d, h:mm a')}
                         </span>
-                        {alert.item_id && (
-                          <Link href={`/inventory/${alert.item_id}`} className="text-xs text-brand-500 font-medium flex items-center gap-1">
+                        {alert.item_id && alert.item_id !== '00000000-0000-0000-0000-000000000000' && (
+                          <Link href={`/inventory/${alert.item_id}`}
+                            className="text-xs text-brand-500 font-medium flex items-center gap-1">
                             <Package size={11} /> View item
                           </Link>
                         )}
@@ -115,10 +115,8 @@ export default function AlertsPage() {
                       </div>
                     </div>
                     {!alert.is_resolved && (
-                      <button
-                        onClick={() => resolveAlert(alert.id)}
-                        className="btn-secondary text-xs px-3 py-1.5 flex-shrink-0"
-                      >
+                      <button onClick={() => setConfirmingId(alert.id)}
+                        className="btn-secondary text-xs px-3 py-1.5 flex-shrink-0">
                         Resolve
                       </button>
                     )}
@@ -126,6 +124,31 @@ export default function AlertsPage() {
                 </div>
               )
             })}
+          </div>
+        )}
+
+        {/* Resolve confirmation dialog */}
+        {confirmingId && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl w-full max-w-sm p-6 text-center shadow-xl">
+              <div className="w-14 h-14 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <CheckCircle2 size={28} className="text-amber-600" />
+              </div>
+              <h3 className="font-semibold text-gray-800 text-lg mb-2">Resolve this alert?</h3>
+              <p className="text-sm text-gray-500 mb-6">
+                This will mark the alert as resolved and record your name. This action is permanent.
+              </p>
+              <div className="flex gap-3">
+                <button onClick={() => setConfirmingId(null)}
+                  className="btn-secondary flex-1 justify-center">
+                  Cancel
+                </button>
+                <button onClick={() => resolveAlert(confirmingId)} disabled={resolving}
+                  className="btn-primary flex-1 justify-center bg-green-600 hover:bg-green-700">
+                  {resolving ? 'Resolving…' : '✓ Yes, Resolve'}
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>
