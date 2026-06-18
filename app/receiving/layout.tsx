@@ -1,1 +1,5 @@
-export default function L({ children }: { children: React.ReactNode }) { return <>{children}</> }
+import { Suspense } from 'react'
+
+export default function ReceivingLayout({ children }: { children: React.ReactNode }) {
+  return <Suspense fallback={null}>{children}</Suspense>
+}
