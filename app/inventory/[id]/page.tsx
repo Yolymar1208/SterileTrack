@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import AppLayout from '@/app/dashboard/layout'
 import { createClient } from '@/lib/supabase'
@@ -11,7 +11,6 @@ import { format } from 'date-fns'
 
 export default function ItemDetailPage() {
   const { id } = useParams()
-  const router = useRouter()
   const supabase = createClient()
   const [item, setItem] = useState<InventoryItem | null>(null)
   const [logs, setLogs] = useState<AuditLog[]>([])
@@ -19,11 +18,9 @@ export default function ItemDetailPage() {
 
   useEffect(() => {
     async function load() {
-      const { data: itemData } = await supabase
-        .from('inventory_items').select('*').eq('id', id).single()
+      const { data: itemData } = await supabase.from('inventory_items').select('*').eq('id', id).single()
       setItem(itemData)
-      const { data: logData } = await supabase
-        .from('audit_logs').select('*').eq('item_id', id).order('created_at', { ascending: false })
+      const { data: logData } = await supabase.from('audit_logs').select('*').eq('item_id', id).order('created_at', { ascending: false })
       setLogs(logData || [])
       setLoading(false)
     }
@@ -44,7 +41,6 @@ export default function ItemDetailPage() {
           <ArrowLeft size={15} /> Back to Inventory
         </Link>
 
-        {/* Item card */}
         <div className="card p-5 mb-4">
           <div className="flex items-start gap-4 mb-5">
             <div className="w-12 h-12 bg-brand-50 rounded-2xl flex items-center justify-center">
@@ -53,24 +49,30 @@ export default function ItemDetailPage() {
             <div className="flex-1">
               <div className="flex items-center gap-3 flex-wrap">
                 <h1 className="text-lg font-semibold text-gray-800">{item.name}</h1>
-                <span className={`text-xs font-medium px-2.5 py-1 rounded-full status-${item.status}`}>
-                  {cfg.label}
-                </span>
+                {cfg && (
+                  <span className="text-xs font-medium px-2.5 py-1 rounded-full"
+                    style={{ background: cfg.bg, color: cfg.color }}>
+                    {cfg.label}
+                  </span>
+                )}
                 {isExpiringSoon && (
                   <span className="text-xs font-medium bg-amber-100 text-amber-700 px-2.5 py-1 rounded-full">
                     Expires soon
                   </span>
                 )}
               </div>
-              {item.description && (
-                <p className="text-sm text-gray-500 mt-1">{item.description}</p>
+              {item.description && <p className="text-sm text-gray-500 mt-1">{item.description}</p>}
+              {item.current_remarks && (
+                <p className="text-xs text-amber-700 bg-amber-50 rounded-lg px-2 py-1 mt-2">
+                  📝 {item.current_remarks}
+                </p>
               )}
             </div>
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             <InfoField icon={QrCode} label="QR Code" value={item.qr_code} mono />
-            <InfoField icon={Tag} label="Type" value={item.item_type.replace(/_/g, ' ')} />
+            <InfoField icon={Tag} label="Type" value={item.item_type.replace(/_/g,' ')} />
             <InfoField icon={MapPin} label="Location" value={item.location || '—'} />
             {item.shelf_location && <InfoField icon={Package} label="Shelf" value={item.shelf_location} />}
             {item.sterilization_date && (
@@ -83,12 +85,6 @@ export default function ItemDetailPage() {
                 valueColor={isExpiringSoon ? 'text-amber-600' : undefined} />
             )}
             {item.last_user_name && <InfoField icon={User} label="Last Updated By" value={item.last_user_name} />}
-          </div>
-
-          <div className="mt-5 flex gap-3">
-            <Link href={`/scan?code=${item.qr_code}`} className="btn-primary text-sm px-4 py-2">
-              <QrCode size={14} /> Scan This Item
-            </Link>
           </div>
         </div>
 
@@ -103,14 +99,14 @@ export default function ItemDetailPage() {
             <div className="relative">
               <div className="absolute left-[19px] top-0 bottom-0 w-px bg-gray-100" />
               <div className="space-y-4">
-                {logs.map((log, i) => (
+                {logs.map(log => (
                   <div key={log.id} className="flex gap-4 relative">
                     <div className="w-10 h-10 bg-brand-50 border-2 border-white rounded-full flex items-center justify-center flex-shrink-0 z-10">
-                      <div className="w-2.5 h-2.5 bg-brand-400 rounded-full" />
+                      <div className={`w-2.5 h-2.5 rounded-full ${log.action === 'set_contents_updated' ? 'bg-blue-400' : 'bg-brand-400'}`} />
                     </div>
                     <div className="flex-1 pb-1">
-                      <div className="font-medium text-sm text-gray-800">
-                        {ACTION_LABELS[log.action] || log.action}
+                      <div className={`font-medium text-sm ${log.action === 'set_contents_updated' ? 'text-blue-700' : 'text-gray-800'}`}>
+                        {ACTION_LABELS[log.action] || log.action.replace(/_/g,' ')}
                       </div>
                       <div className="text-xs text-gray-500 mt-0.5 flex items-center gap-3 flex-wrap">
                         <span className="flex items-center gap-1"><User size={11} />{log.performed_by_name}</span>
