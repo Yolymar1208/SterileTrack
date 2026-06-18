@@ -55,6 +55,8 @@ export default function ORVerificationPage() {
   async function loadPending(userId: string) {
     setLoading(true)
 
+    const now = new Date()
+
     // Only get dispense records where this user is the receiver
     const { data: myDispenses } = await supabase
       .from('dispense_records')
@@ -71,25 +73,53 @@ export default function ORVerificationPage() {
     const result: PendingVerification[] = []
 
     for (const dr of myDispenses) {
-      // Check item is still dispensed
+      const dispensedAt = new Date(dr.created_at)
+      const deadline = new Date(dispensedAt.getTime() + 60 * 60 * 1000)
+      const minutesSince = differenceInMinutes(now, dispensedAt)
+      const isOverdue = now > deadline
+
+      // SKIP: already has a verification record (manually verified or auto-confirmed)
+      const { data: verif } = await supabase
+        .from('or_verifications')
+        .select('id')
+        .eq('dispense_record_id', dr.id)
+        .single()
+
+      if (verif) {
+        // Already verified — skip entirely, do not show
+        continue
+      }
+
+      // SKIP: past 1-hour deadline — auto-confirm and log, then skip
+      if (isOverdue) {
+        await autoConfirm({
+          dispense_id: dr.id,
+          item_id: dr.item_id,
+          item_name: dr.item_name,
+          item_qr_code: dr.item_qr_code,
+          or_room: dr.or_room,
+          received_by_name: dr.received_by_name,
+          received_by_id: dr.received_by_id,
+          dispensed_at: dr.created_at,
+          minutes_since_dispense: minutesSince,
+          auto_confirm_deadline: deadline.toISOString(),
+          verification_id: null,
+          is_verified: false,
+          is_auto_confirmed: false,
+          contents: [],
+        })
+        // Skip — do not add to the visible list
+        continue
+      }
+
+      // SKIP: item is no longer dispensed (already returned to CSSD)
       const { data: itemData } = await supabase
         .from('inventory_items')
-        .select('status, name, qr_code')
+        .select('status')
         .eq('id', dr.item_id)
         .single()
 
       if (!itemData || itemData.status !== 'dispensed') continue
-
-      // Check if already verified
-      const { data: verif } = await supabase
-        .from('or_verifications')
-        .select('*')
-        .eq('dispense_record_id', dr.id)
-        .single()
-
-      const dispensedAt = new Date(dr.created_at)
-      const minutesSince = differenceInMinutes(new Date(), dispensedAt)
-      const deadline = new Date(dispensedAt.getTime() + 60 * 60 * 1000)
 
       // Get contents
       const { data: contents } = await supabase
@@ -98,6 +128,7 @@ export default function ORVerificationPage() {
         .eq('set_id', dr.item_id)
         .order('sort_order')
 
+      // Only add items that are active, within 1 hour, and unverified
       result.push({
         dispense_id: dr.id,
         item_id: dr.item_id,
@@ -109,9 +140,9 @@ export default function ORVerificationPage() {
         dispensed_at: dr.created_at,
         minutes_since_dispense: minutesSince,
         auto_confirm_deadline: deadline.toISOString(),
-        verification_id: verif?.id || null,
-        is_verified: !!verif?.verified_at,
-        is_auto_confirmed: !!verif?.is_auto_confirmed,
+        verification_id: null,
+        is_verified: false,
+        is_auto_confirmed: false,
         contents: contents || [],
       })
     }
@@ -121,14 +152,7 @@ export default function ORVerificationPage() {
   }
 
   async function checkAutoConfirm() {
-    const now = new Date()
-    for (const item of pending) {
-      if (item.is_verified) continue
-      const deadline = new Date(item.auto_confirm_deadline)
-      if (now > deadline && !item.verification_id) {
-        await autoConfirm(item)
-      }
-    }
+    // Just reload — loadPending handles auto-confirming overdue items automatically
     if (currentUser) loadPending(currentUser.id)
   }
 
@@ -212,11 +236,12 @@ export default function ORVerificationPage() {
 
     setVerifying(null)
     setExpandedId(null)
+    // Remove immediately from local state so it disappears without waiting for reload
+    setPending(prev => prev.filter(p => p.dispense_id !== item.dispense_id))
     loadPending(currentUser.id)
   }
 
-  const unverified = pending.filter(p => !p.is_verified)
-  const verified = pending.filter(p => p.is_verified)
+  // pending now only contains active, unverified, within-deadline items
 
   return (
     <AppLayout>
@@ -255,34 +280,28 @@ export default function ORVerificationPage() {
             <Loader2 size={24} className="animate-spin mx-auto mb-2" />
             Loading your items…
           </div>
-        ) : unverified.length === 0 && verified.length === 0 ? (
+        ) : pending.length === 0 ? (
           <div className="card p-10 text-center">
             <CheckCircle2 size={40} className="text-green-400 mx-auto mb-3" />
-            <p className="font-medium text-gray-600">Nothing to verify</p>
+            <p className="font-medium text-gray-600">All clear! 🎉</p>
             <p className="text-sm text-gray-400 mt-1">
-              No instrument sets have been dispensed to you yet.
+              No instrument sets pending verification.
             </p>
           </div>
-        ) : unverified.length === 0 ? (
-          <div className="card p-8 text-center mb-4">
-            <CheckCircle2 size={36} className="text-green-400 mx-auto mb-3" />
-            <p className="font-medium text-gray-600">All your sets are verified! 🎉</p>
-          </div>
         ) : (
-          <div className="space-y-3 mb-6">
+          <div className="space-y-3">
             <h2 className="text-sm font-medium text-gray-600 flex items-center gap-2">
               <AlertTriangle size={14} className="text-amber-500" />
-              Pending Your Verification ({unverified.length})
+              Pending Your Verification ({pending.length})
             </h2>
-            {unverified.map(item => {
+            {pending.map(item => {
               const isExpanded = expandedId === item.dispense_id
               const minutesLeft = 60 - item.minutes_since_dispense
               const isUrgent = minutesLeft < 15
-              const isOverdue = minutesLeft <= 0
 
               return (
                 <div key={item.dispense_id}
-                  className={`card overflow-hidden border ${isOverdue ? 'border-red-200' : isUrgent ? 'border-amber-200' : 'border-gray-100'}`}>
+                  className={`card overflow-hidden border ${isUrgent ? 'border-amber-200' : 'border-gray-100'}`}>
                   <button
                     onClick={() => setExpandedId(isExpanded ? null : item.dispense_id)}
                     className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-gray-50 transition-colors">
@@ -297,8 +316,8 @@ export default function ORVerificationPage() {
                       </div>
                     </div>
                     <div className="flex-shrink-0 text-right">
-                      <div className={`text-xs font-bold ${isOverdue ? 'text-red-600' : isUrgent ? 'text-amber-600' : 'text-gray-500'}`}>
-                        {isOverdue ? 'OVERDUE' : `${minutesLeft}min left`}
+                      <div className={`text-xs font-bold ${isUrgent ? 'text-amber-600' : 'text-gray-500'}`}>
+                        {minutesLeft}min left
                       </div>
                       {isExpanded
                         ? <ChevronUp size={15} className="text-gray-400 ml-auto mt-1" />
