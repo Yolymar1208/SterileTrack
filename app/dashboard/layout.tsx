@@ -7,7 +7,7 @@ import { createClient } from '@/lib/supabase'
 import {
   LayoutDashboard, Package, Inbox, Send,
   Archive, ListChecks, History, Bell,
-  Shield, LogOut, Menu, ChevronRight, Users
+  Shield, LogOut, Menu, ChevronRight, Users, ClipboardCheck
 } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -16,6 +16,7 @@ type NavItem = {
   label: string
   icon: any
   highlight?: boolean
+  badge?: 'alert' | 'or'
 }
 
 type NavSection = {
@@ -30,6 +31,7 @@ const NAV: NavSection[] = [
   { section: 'CSSD Workflow', items: [
     { href: '/receiving', label: 'Receiving Area', icon: Inbox, highlight: true },
     { href: '/dispensing', label: 'Dispensing Area', icon: Send, highlight: true },
+    { href: '/or-verification', label: 'OR Verification', icon: ClipboardCheck, highlight: true, badge: 'or' },
   ]},
   { section: 'Management', items: [
     { href: '/inventory', label: 'Inventory', icon: Package },
@@ -38,7 +40,7 @@ const NAV: NavSection[] = [
   ]},
   { section: 'Reports', items: [
     { href: '/audit', label: 'Audit Trail', icon: History },
-    { href: '/alerts', label: 'Alerts', icon: Bell },
+    { href: '/alerts', label: 'Alerts', icon: Bell, badge: 'alert' },
     { href: '/staff', label: 'Staff Directory', icon: Users },
   ]},
 ]
@@ -50,16 +52,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [user, setUser] = useState<{name: string; role: string; initials: string} | null>(null)
   const [alertCount, setAlertCount] = useState(0)
+  const [orPendingCount, setOrPendingCount] = useState(0)
 
   useEffect(() => {
     async function load() {
       const { data: { user: authUser } } = await supabase.auth.getUser()
       if (!authUser) { router.push('/'); return }
       const { data: profile } = await supabase
-        .from('profiles')
-        .select('full_name, role, avatar_initials')
-        .eq('id', authUser.id)
-        .single()
+        .from('profiles').select('full_name, role, avatar_initials').eq('id', authUser.id).single()
       if (profile) {
         setUser({
           name: profile.full_name,
@@ -70,14 +70,21 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         const name = authUser.email?.split('@')[0] || 'Staff'
         setUser({ name, role: 'staff', initials: name.slice(0,2).toUpperCase() })
       }
-      const { count } = await supabase
-        .from('alerts')
-        .select('id', { count: 'exact', head: true })
-        .eq('is_resolved', false)
-      setAlertCount(count || 0)
+      // Alert count
+      const { count: ac } = await supabase.from('alerts').select('id', { count: 'exact', head: true }).eq('is_resolved', false)
+      setAlertCount(ac || 0)
+      // OR pending count — dispensed items not yet verified
+      const { data: dispensed } = await supabase.from('inventory_items').select('id').eq('status', 'dispensed')
+      if (dispensed && dispensed.length > 0) {
+        const ids = dispensed.map(d => d.id)
+        const { data: verified } = await supabase.from('or_verifications').select('item_id').in('item_id', ids)
+        const verifiedIds = new Set((verified || []).map((v: any) => v.item_id))
+        const pending = dispensed.filter(d => !verifiedIds.has(d.id)).length
+        setOrPendingCount(pending)
+      }
     }
     load()
-  }, [])
+  }, [pathname]) // Re-run on route change to keep counts fresh
 
   async function handleLogout() {
     await supabase.auth.signOut()
@@ -106,22 +113,24 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             </div>
             {section.items.map(item => {
               const active = pathname === item.href || pathname.startsWith(item.href + '/')
+              const badgeCount = item.badge === 'alert' ? alertCount : item.badge === 'or' ? orPendingCount : 0
               return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  onClick={() => setSidebarOpen(false)}
+                <Link key={item.href} href={item.href} onClick={() => setSidebarOpen(false)}
                   className={clsx(
                     'flex items-center gap-3 px-3 py-2.5 rounded-xl mb-0.5 text-sm font-medium transition-all',
-                    active
-                      ? 'bg-brand-400/20 text-brand-300'
-                      : 'text-white/60 hover:text-white hover:bg-white/8',
+                    active ? 'bg-brand-400/20 text-brand-300' : 'text-white/60 hover:text-white hover:bg-white/8',
                     item.highlight && !active && 'border border-white/10'
-                  )}
-                >
+                  )}>
                   <item.icon size={17} />
                   <span className="flex-1">{item.label}</span>
-                  {item.href === '/alerts' && alertCount > 0 && (
+                  {/* Red exclamation for OR Verification */}
+                  {item.badge === 'or' && orPendingCount > 0 && (
+                    <span className="w-5 h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center flex-shrink-0">
+                      !
+                    </span>
+                  )}
+                  {/* Count badge for alerts */}
+                  {item.badge === 'alert' && alertCount > 0 && (
                     <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
                       {alertCount}
                     </span>
@@ -161,27 +170,23 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
       {sidebarOpen && (
         <div className="md:hidden fixed inset-0 z-50 flex">
-          <div className="w-56 bg-brand-900 flex flex-col">
-            <SidebarContent />
-          </div>
+          <div className="w-56 bg-brand-900 flex flex-col"><SidebarContent /></div>
           <div className="flex-1 bg-black/50" onClick={() => setSidebarOpen(false)} />
         </div>
       )}
 
       <div className="flex-1 flex flex-col overflow-hidden">
         <div className="md:hidden bg-white border-b border-gray-100 px-4 py-3 flex items-center gap-3">
-          <button onClick={() => setSidebarOpen(true)} className="text-gray-600">
-            <Menu size={22} />
-          </button>
+          <button onClick={() => setSidebarOpen(true)} className="text-gray-600"><Menu size={22} /></button>
           <div className="flex items-center gap-2">
             <Shield size={18} className="text-brand-500" />
             <span className="font-semibold text-brand-900 text-sm">SterileTrack</span>
           </div>
+          {orPendingCount > 0 && (
+            <span className="ml-auto w-5 h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">!</span>
+          )}
         </div>
-
-        <main className="flex-1 overflow-y-auto">
-          {children}
-        </main>
+        <main className="flex-1 overflow-y-auto">{children}</main>
       </div>
     </div>
   )
