@@ -39,6 +39,14 @@ export default function ReceivingPage() {
   const [showDispensedList, setShowDispensedList] = useState(true)
   const [loadingDispensed, setLoadingDispensed] = useState(true)
 
+  // Awaiting inspection list (status = received)
+  const [awaitingItems, setAwaitingItems] = useState<InventoryItem[]>([])
+  const [showAwaitingList, setShowAwaitingList] = useState(true)
+
+  // In sterilization list (status = packed)
+  const [sterilizingItems, setSterilizingItems] = useState<InventoryItem[]>([])
+  const [showSterilizingList, setShowSterilizingList] = useState(true)
+
   // Item being processed
   const [qrInput, setQrInput] = useState('')
   const [item, setItem] = useState<InventoryItem | null>(null)
@@ -77,6 +85,7 @@ export default function ReceivingPage() {
         })
     })
     loadDispensedItems()
+    loadWorkflowItems()
 
     // Auto-load from URL param (from Inventory "Update" button)
     const preload = searchParams.get('qr')
@@ -123,6 +132,24 @@ export default function ReceivingPage() {
     }
     setDispensedItems(enriched)
     setLoadingDispensed(false)
+  }
+
+  async function loadWorkflowItems() {
+    const { data: awaiting } = await supabase
+      .from('inventory_items').select('*').eq('status', 'received').order('updated_at', { ascending: false })
+    setAwaitingItems(awaiting || [])
+
+    const { data: sterilizing } = await supabase
+      .from('inventory_items').select('*').eq('status', 'packed').order('updated_at', { ascending: false })
+    setSterilizingItems(sterilizing || [])
+  }
+
+  async function selectWorkflowItem(it: InventoryItem) {
+    setShowDispensedList(false)
+    setShowAwaitingList(false)
+    setShowSterilizingList(false)
+    setQrInput(it.qr_code)
+    await lookupItemWithDispense(it.qr_code, null)
   }
 
   async function selectDispensedItem(dispensed: DispensedItem) {
@@ -364,6 +391,7 @@ export default function ReceivingPage() {
       setRemarks(''); setShelfLocation(''); setSuccess('')
       setReturnedByStaff(null)
       loadDispensedItems()
+      loadWorkflowItems()
       setShowDispensedList(true)
       inputRef.current?.focus()
     }, 2000)
@@ -435,6 +463,84 @@ export default function ReceivingPage() {
                     ))}
                   </div>
                 )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* AWAITING INSPECTION LIST */}
+        {!item && awaitingItems.length > 0 && (
+          <div className="card mb-4 overflow-hidden">
+            <button
+              onClick={() => setShowAwaitingList(!showAwaitingList)}
+              className="w-full flex items-center justify-between px-4 py-3 bg-amber-50 hover:bg-amber-100 transition-colors">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-500 flex-shrink-0" />
+                <span className="font-medium text-amber-800 text-sm">
+                  Awaiting Inspection ({awaitingItems.length})
+                </span>
+              </div>
+              {showAwaitingList
+                ? <ChevronUp size={16} className="text-amber-500" />
+                : <ChevronDown size={16} className="text-amber-500" />}
+            </button>
+            {showAwaitingList && (
+              <div className="divide-y divide-gray-50">
+                {awaitingItems.map(it => (
+                  <button key={it.id} onClick={() => selectWorkflowItem(it)}
+                    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors text-left">
+                    <div className="w-9 h-9 bg-amber-50 rounded-xl flex items-center justify-center flex-shrink-0">
+                      <Package size={16} className="text-amber-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-gray-800">{it.name}</div>
+                      <div className="text-xs text-gray-400 mt-0.5 flex items-center gap-2">
+                        <span className="font-mono">{it.qr_code}</span>
+                        {it.last_user_name && <span>· {it.last_user_name}</span>}
+                      </div>
+                    </div>
+                    <span className="text-xs text-amber-600 font-medium flex-shrink-0">Inspect →</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* IN STERILIZATION LIST */}
+        {!item && sterilizingItems.length > 0 && (
+          <div className="card mb-4 overflow-hidden">
+            <button
+              onClick={() => setShowSterilizingList(!showSterilizingList)}
+              className="w-full flex items-center justify-between px-4 py-3 bg-orange-50 hover:bg-orange-100 transition-colors">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-orange-500 flex-shrink-0" />
+                <span className="font-medium text-orange-800 text-sm">
+                  In Sterilization ({sterilizingItems.length})
+                </span>
+              </div>
+              {showSterilizingList
+                ? <ChevronUp size={16} className="text-orange-500" />
+                : <ChevronDown size={16} className="text-orange-500" />}
+            </button>
+            {showSterilizingList && (
+              <div className="divide-y divide-gray-50">
+                {sterilizingItems.map(it => (
+                  <button key={it.id} onClick={() => selectWorkflowItem(it)}
+                    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors text-left">
+                    <div className="w-9 h-9 bg-orange-50 rounded-xl flex items-center justify-center flex-shrink-0">
+                      <Package size={16} className="text-orange-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-gray-800">{it.name}</div>
+                      <div className="text-xs text-gray-400 mt-0.5 flex items-center gap-2">
+                        <span className="font-mono">{it.qr_code}</span>
+                        {it.last_user_name && <span>· {it.last_user_name}</span>}
+                      </div>
+                    </div>
+                    <span className="text-xs text-orange-600 font-medium flex-shrink-0">Confirm Sterile →</span>
+                  </button>
+                ))}
               </div>
             )}
           </div>
@@ -723,7 +829,12 @@ export default function ReceivingPage() {
                   ✅ Sterilization Tape Confirmed — Shelf Location
                 </label>
                 <div className="flex gap-2 flex-wrap mb-2">
-                  {['Shelf A1','Shelf A2','Shelf B1','Shelf B2','Shelf C1','Shelf C2','Shelf D1'].map(s => (
+                  {[
+                    'Sterile Room Shelf A','Sterile Room Shelf B','Sterile Room Shelf C',
+                    'Sterile Room Shelf D','Sterile Room Shelf E','Sterile Room Shelf F',
+                    'Sterile Room Shelf G','Sterile Room Shelf H','Sterile Room Shelf I',
+                    'Sterile Room Shelf J'
+                  ].map(s => (
                     <button key={s} onClick={() => setShelfLocation(s)}
                       className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
                         shelfLocation === s ? 'bg-brand-500 text-white border-brand-500' : 'bg-white text-gray-600 border-gray-200 hover:border-brand-300'
