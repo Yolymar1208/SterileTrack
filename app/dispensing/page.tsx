@@ -3,12 +3,13 @@
 import { useState, useEffect } from 'react'
 import AppLayout from '@/app/dashboard/layout'
 import { createClient } from '@/lib/supabase'
-import { Send, Package, Search, X, QrCode, Printer, Loader2, CheckCircle2, User, MapPin } from 'lucide-react'
+import { Send, Package, Search, X, QrCode, Printer, Loader2, CheckCircle2, MapPin, Camera } from 'lucide-react'
 import { InventoryItem, Profile, SetContent } from '@/lib/types'
 import { format, differenceInDays } from 'date-fns'
 import Link from 'next/link'
+import CameraQRScanner from '@/components/CameraQRScanner'
 
-const OR_ROOMS = ['OR 1', 'OR 2', 'OR 3', 'OR 4', 'OR 5', 'Minor OR', 'Recovery', 'ICU']
+const OR_ROOMS = ['OR 1','OR 2','OR 3','OR 4','OR 5','OR 6','OR 7','OR 8','OR 9','OR 10','OR 11','PACU','WARD']
 
 export default function DispensingPage() {
   const supabase = createClient()
@@ -18,10 +19,12 @@ export default function DispensingPage() {
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null)
 
   useEffect(() => { load() }, [])
+
   async function load() {
     const { data } = await supabase.from('inventory_items')
       .select('*').eq('status', 'sterile').order('shelf_location')
-    setItems(data || []); setLoading(false)
+    setItems(data || [])
+    setLoading(false)
   }
 
   const filtered = items.filter(i => !search ||
@@ -44,7 +47,7 @@ export default function DispensingPage() {
             <Send size={22} className="text-brand-500" /> CSSD Dispensing Area
           </h1>
           <p className="text-sm text-gray-500 mt-1">
-            Dispense sterile sets to OR staff — scan staff QR for accountability
+            Dispense sterile sets to OR staff with full accountability
           </p>
         </div>
 
@@ -62,7 +65,7 @@ export default function DispensingPage() {
           <div className="card p-10 text-center">
             <Package size={40} className="text-gray-300 mx-auto mb-3" />
             <p className="font-medium text-gray-600">No sterile items available</p>
-            <p className="text-sm text-gray-400 mt-1">Items must be sterilized in the Receiving Area first.</p>
+            <p className="text-sm text-gray-400 mt-1">Items must be sterilized in Receiving first.</p>
           </div>
         ) : (
           <div className="space-y-4">
@@ -109,7 +112,9 @@ export default function DispensingPage() {
         )}
 
         {selectedItem && (
-          <DispenseModal item={selectedItem} onClose={() => setSelectedItem(null)} onDispensed={() => { setSelectedItem(null); load() }} />
+          <DispenseModal item={selectedItem}
+            onClose={() => setSelectedItem(null)}
+            onDispensed={() => { setSelectedItem(null); load() }} />
         )}
       </div>
     </AppLayout>
@@ -122,13 +127,14 @@ function DispenseModal({ item, onClose, onDispensed }: {
   const supabase = createClient()
   const [staffQr, setStaffQr] = useState('')
   const [receivingStaff, setReceivingStaff] = useState<Profile | null>(null)
-  const [staffSearchResults, setStaffSearchResults] = useState<Profile[]>([])
   const [staffSearch, setStaffSearch] = useState('')
+  const [staffSearchResults, setStaffSearchResults] = useState<Profile[]>([])
   const [orRoom, setOrRoom] = useState(OR_ROOMS[0])
   const [remarks, setRemarks] = useState('')
   const [contents, setContents] = useState<SetContent[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [showCamera, setShowCamera] = useState(false)
 
   useEffect(() => {
     supabase.from('set_contents').select('*').eq('set_id', item.id).order('sort_order')
@@ -137,9 +143,9 @@ function DispenseModal({ item, onClose, onDispensed }: {
 
   async function lookupStaffByQr(qr: string) {
     if (!qr.trim()) return
-    const { data } = await supabase.from('profiles').select('*').eq('qr_code', qr.trim().toUpperCase()).single()
+    const { data } = await supabase.from('profiles').select('*').eq('qr_code', qr.trim()).single()
     if (data) { setReceivingStaff(data); setStaffQr(''); setError('') }
-    else setError(`No staff found for QR "${qr.trim()}"`)
+    else setError(`No staff found for QR code "${qr.trim()}". Try searching by name instead.`)
   }
 
   async function searchStaffByName(q: string) {
@@ -147,6 +153,11 @@ function DispenseModal({ item, onClose, onDispensed }: {
     if (!q.trim()) { setStaffSearchResults([]); return }
     const { data } = await supabase.from('profiles').select('*').ilike('full_name', `%${q}%`).limit(5)
     setStaffSearchResults(data || [])
+  }
+
+  function handleCameraScan(code: string) {
+    setShowCamera(false)
+    lookupStaffByQr(code)
   }
 
   function openPrintList() {
@@ -160,7 +171,6 @@ function DispenseModal({ item, onClose, onDispensed }: {
     const { data: { user } } = await supabase.auth.getUser()
     const { data: dispProfile } = await supabase.from('profiles').select('full_name, department').eq('id', user!.id).single()
     const dispName = dispProfile?.full_name || user?.email?.split('@')[0] || 'Staff'
-
     const contentsText = contents.map(c => `${c.quantity}× ${c.instrument_name}`).join('; ')
 
     await supabase.from('inventory_items').update({
@@ -183,7 +193,7 @@ function DispenseModal({ item, onClose, onDispensed }: {
       action: 'dispensed_to_or', performed_by_id: user!.id,
       performed_by_name: dispName, department: dispProfile?.department,
       location: orRoom, device_used: 'Web Browser',
-      notes: `Received by ${receivingStaff.full_name}. ${remarks || ''}`.trim(),
+      notes: `Received by ${receivingStaff.full_name} (${receivingStaff.qr_code || 'no QR'}). ${remarks || ''}`.trim(),
     })
 
     setLoading(false)
@@ -213,11 +223,15 @@ function DispenseModal({ item, onClose, onDispensed }: {
                   <input type="text" value={staffQr}
                     onChange={e => setStaffQr(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && lookupStaffByQr(staffQr)}
-                    placeholder="Scan staff badge QR (e.g. STAFF-001)"
+                    placeholder="Type or scan staff QR code…"
                     className="input-field flex-1 font-mono text-sm" />
                   <button onClick={() => lookupStaffByQr(staffQr)} disabled={!staffQr.trim()}
                     className="btn-primary px-3 text-sm">
                     <QrCode size={14} />
+                  </button>
+                  <button onClick={() => setShowCamera(true)}
+                    className="btn-secondary px-3 text-sm" title="Scan with camera">
+                    <Camera size={14} />
                   </button>
                 </div>
                 <div className="relative">
@@ -229,14 +243,15 @@ function DispenseModal({ item, onClose, onDispensed }: {
                   {staffSearchResults.length > 0 && (
                     <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-100 rounded-xl shadow-lg z-10 max-h-48 overflow-y-auto">
                       {staffSearchResults.map(s => (
-                        <button key={s.id} onClick={() => { setReceivingStaff(s); setStaffSearch(''); setStaffSearchResults([]) }}
+                        <button key={s.id}
+                          onClick={() => { setReceivingStaff(s); setStaffSearch(''); setStaffSearchResults([]) }}
                           className="w-full text-left px-3 py-2 hover:bg-gray-50 text-sm flex items-center gap-2">
                           <div className="w-7 h-7 bg-brand-50 rounded-full flex items-center justify-center text-brand-600 text-xs font-bold">
-                            {s.full_name.split(' ').map(n => n[0]).join('').slice(0,2)}
+                            {s.full_name.split(' ').map((n: string) => n[0]).join('').slice(0,2)}
                           </div>
                           <div>
                             <div className="font-medium text-gray-700">{s.full_name}</div>
-                            <div className="text-xs text-gray-400">{s.role.replace(/_/g, ' ')} · {s.department || 'No dept'}</div>
+                            <div className="text-xs text-gray-400">{s.role?.replace(/_/g,' ')} · {s.department}</div>
                           </div>
                         </button>
                       ))}
@@ -252,9 +267,9 @@ function DispenseModal({ item, onClose, onDispensed }: {
                 <div className="flex-1">
                   <div className="font-medium text-gray-800 text-sm">{receivingStaff.full_name}</div>
                   <div className="text-xs text-gray-500">
-                    {receivingStaff.role.replace(/_/g, ' ')}
+                    {receivingStaff.role?.replace(/_/g,' ')}
                     {receivingStaff.department && ` · ${receivingStaff.department}`}
-                    {receivingStaff.qr_code && ` · ${receivingStaff.qr_code}`}
+                    {receivingStaff.qr_code && <span className="font-mono ml-1">· {receivingStaff.qr_code}</span>}
                   </div>
                 </div>
                 <button onClick={() => setReceivingStaff(null)} className="text-gray-400 hover:text-gray-600">
@@ -266,9 +281,7 @@ function DispenseModal({ item, onClose, onDispensed }: {
 
           {/* OR Room */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Destination <span className="text-red-400">*</span>
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Destination <span className="text-red-400">*</span></label>
             <div className="flex gap-2 flex-wrap">
               {OR_ROOMS.map(r => (
                 <button key={r} onClick={() => setOrRoom(r)}
@@ -294,13 +307,9 @@ function DispenseModal({ item, onClose, onDispensed }: {
           {/* Contents preview */}
           {contents.length > 0 && (
             <div className="bg-gray-50 rounded-xl p-3">
-              <div className="text-xs font-medium text-gray-600 mb-2">
-                Contents ({contents.length} item types):
-              </div>
+              <div className="text-xs font-medium text-gray-600 mb-2">Contents ({contents.length} item types):</div>
               <div className="text-xs text-gray-500 space-y-0.5 max-h-32 overflow-y-auto">
-                {contents.map(c => (
-                  <div key={c.id}>• {c.quantity}× {c.instrument_name}</div>
-                ))}
+                {contents.map(c => <div key={c.id}>• {c.quantity}× {c.instrument_name}</div>)}
               </div>
             </div>
           )}
@@ -321,6 +330,13 @@ function DispenseModal({ item, onClose, onDispensed }: {
           </div>
         </div>
       </div>
+
+      {showCamera && (
+        <CameraQRScanner
+          label="Scan Staff QR Badge"
+          onScan={handleCameraScan}
+          onClose={() => setShowCamera(false)} />
+      )}
     </div>
   )
 }
