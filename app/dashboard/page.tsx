@@ -7,7 +7,7 @@ import { format } from 'date-fns'
 import {
   Inbox, Send, Package, CheckCircle2, AlertTriangle, Clock,
   ArrowRight, RefreshCw, Bell, ListChecks, Archive,
-  Download, Upload, Loader2, X, Eye, EyeOff, Lock
+  Download, Upload, Loader2, X, Eye, EyeOff, Lock, ClipboardCheck
 } from 'lucide-react'
 import { InventoryItem, AuditLog, STATUS_CONFIG, ACTION_LABELS } from '@/lib/types'
 
@@ -57,6 +57,7 @@ export default function DashboardPage() {
   const [emoji, setEmoji] = useState('☀️')
   const [userName, setUserName] = useState('there')
   const [loading, setLoading] = useState(true)
+  const [orPendingCount, setOrPendingCount] = useState(0)
 
   // Backup state
   const [backingUp, setBackingUp] = useState(false)
@@ -91,6 +92,26 @@ export default function DashboardPage() {
     setRecentItems(items || [])
     const { data: audit } = await supabase.from('audit_logs').select('*').order('created_at', { ascending: false }).limit(6)
     setRecentAudit(audit || [])
+
+    // OR pending count for current user
+    if (user) {
+      const { data: myDispenses } = await supabase
+        .from('dispense_records').select('id, item_id').eq('received_by_id', user.id)
+      if (myDispenses && myDispenses.length > 0) {
+        const itemIds = myDispenses.map(d => d.item_id)
+        const { data: stillDispensed } = await supabase
+          .from('inventory_items').select('id').eq('status', 'dispensed').in('id', itemIds)
+        if (stillDispensed && stillDispensed.length > 0) {
+          const dispIds = myDispenses
+            .filter(d => stillDispensed.some(s => s.id === d.item_id)).map(d => d.id)
+          const { data: verified } = await supabase
+            .from('or_verifications').select('dispense_record_id').in('dispense_record_id', dispIds)
+          const verifiedIds = new Set((verified || []).map((v: any) => v.dispense_record_id))
+          setOrPendingCount(dispIds.filter(id => !verifiedIds.has(id)).length)
+        } else { setOrPendingCount(0) }
+      } else { setOrPendingCount(0) }
+    }
+
     setLoading(false)
   }
 
@@ -226,46 +247,88 @@ export default function DashboardPage() {
         </Link>
       )}
 
-      {/* Big workflow buttons */}
-      <div className="grid md:grid-cols-2 gap-3 mb-5">
-        <Link href="/receiving">
-          <div className="card p-6 hover:shadow-md transition-all cursor-pointer border-2 border-transparent hover:border-brand-300">
+      {/* Three workflow cards */}
+      <div className="grid md:grid-cols-3 gap-3 mb-5">
+        {/* 1. Dispensing */}
+        <Link href="/dispensing">
+          <div className="card p-5 hover:shadow-md transition-all cursor-pointer border-2 border-transparent hover:border-brand-300 h-full">
             <div className="flex items-center gap-3 mb-3">
-              <div className="w-12 h-12 bg-brand-50 rounded-2xl flex items-center justify-center">
-                <Inbox size={24} className="text-brand-500" />
+              <div className="w-11 h-11 bg-green-50 rounded-2xl flex items-center justify-center">
+                <Send size={22} className="text-green-600" />
               </div>
               <div>
-                <h2 className="font-semibold text-gray-800">CSSD Receiving Area</h2>
-                <p className="text-xs text-gray-500">Receive · Inspect · Pack · Sterilize</p>
+                <h2 className="font-semibold text-gray-800 text-sm">Dispensing Area</h2>
+                <p className="text-xs text-gray-500">Release sterile sets to OR</p>
               </div>
             </div>
-            <div className="flex items-center justify-between mt-4">
+            <div className="flex items-center justify-between mt-2">
               <div className="text-xs text-gray-500">
-                <span className="text-amber-600 font-medium">{stats?.received_count ?? 0}</span> awaiting inspection ·
-                <span className="text-orange-600 font-medium ml-1">{stats?.packed_count ?? 0}</span> in sterilization
+                <span className="text-green-600 font-semibold text-base">{stats?.sterile_count ?? '–'}</span>
+                <span className="ml-1">ready</span>
+                <span className="mx-1">·</span>
+                <span className="text-blue-600 font-semibold">{stats?.dispensed_count ?? '–'}</span>
+                <span className="ml-1">at OR</span>
               </div>
-              <ArrowRight size={16} className="text-brand-500" />
+              <ArrowRight size={14} className="text-green-500" />
             </div>
           </div>
         </Link>
 
-        <Link href="/dispensing">
-          <div className="card p-6 hover:shadow-md transition-all cursor-pointer border-2 border-transparent hover:border-brand-300">
+        {/* 2. OR Verification */}
+        <Link href="/or-verification">
+          <div className={`card p-5 hover:shadow-md transition-all cursor-pointer border-2 h-full ${
+            orPendingCount > 0 ? 'border-red-200 bg-red-50' : 'border-transparent hover:border-brand-300'
+          }`}>
             <div className="flex items-center gap-3 mb-3">
-              <div className="w-12 h-12 bg-green-50 rounded-2xl flex items-center justify-center">
-                <Send size={24} className="text-green-600" />
+              <div className={`w-11 h-11 rounded-2xl flex items-center justify-center ${
+                orPendingCount > 0 ? 'bg-red-100' : 'bg-brand-50'
+              }`}>
+                <ClipboardCheck size={22} className={orPendingCount > 0 ? 'text-red-600' : 'text-brand-500'} />
               </div>
-              <div>
-                <h2 className="font-semibold text-gray-800">CSSD Dispensing Area</h2>
-                <p className="text-xs text-gray-500">Dispense sterile sets to OR staff</p>
+              <div className="flex-1">
+                <h2 className="font-semibold text-gray-800 text-sm flex items-center gap-2">
+                  OR Verification
+                  {orPendingCount > 0 && (
+                    <span className="w-5 h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">!</span>
+                  )}
+                </h2>
+                <p className="text-xs text-gray-500">Confirm set completeness</p>
               </div>
             </div>
-            <div className="flex items-center justify-between mt-4">
-              <div className="text-xs text-gray-500">
-                <span className="text-green-600 font-medium">{stats?.sterile_count ?? 0}</span> ready to dispense ·
-                <span className="text-blue-600 font-medium ml-1">{stats?.dispensed_count ?? 0}</span> at OR
+            <div className="flex items-center justify-between mt-2">
+              {orPendingCount > 0 ? (
+                <p className="text-xs text-red-600 font-medium">{orPendingCount} pending your verification</p>
+              ) : (
+                <p className="text-xs text-green-600 font-medium flex items-center gap-1">
+                  <CheckCircle2 size={11} /> All clear
+                </p>
+              )}
+              <ArrowRight size={14} className={orPendingCount > 0 ? 'text-red-400' : 'text-brand-500'} />
+            </div>
+          </div>
+        </Link>
+
+        {/* 3. Receiving */}
+        <Link href="/receiving">
+          <div className="card p-5 hover:shadow-md transition-all cursor-pointer border-2 border-transparent hover:border-brand-300 h-full">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-11 h-11 bg-brand-50 rounded-2xl flex items-center justify-center">
+                <Inbox size={22} className="text-brand-500" />
               </div>
-              <ArrowRight size={16} className="text-green-500" />
+              <div>
+                <h2 className="font-semibold text-gray-800 text-sm">Receiving Area</h2>
+                <p className="text-xs text-gray-500">Inspect · Pack · Sterilize</p>
+              </div>
+            </div>
+            <div className="flex items-center justify-between mt-2">
+              <div className="text-xs text-gray-500">
+                <span className="text-amber-600 font-semibold">{stats?.received_count ?? '–'}</span>
+                <span className="ml-1">awaiting</span>
+                <span className="mx-1">·</span>
+                <span className="text-orange-600 font-semibold">{stats?.packed_count ?? '–'}</span>
+                <span className="ml-1">sterilizing</span>
+              </div>
+              <ArrowRight size={16} className="text-brand-500" />
             </div>
           </div>
         </Link>
