@@ -366,28 +366,7 @@ export default function ORVerificationPage() {
         )}
 
         {/* Verified items */}
-        {verified.length > 0 && (
-          <div className="space-y-2">
-            <h2 className="text-sm font-medium text-gray-500">
-              Recently Verified ({verified.length})
-            </h2>
-            {verified.slice(0, 5).map(item => (
-              <div key={item.dispense_id} className="card px-4 py-3 flex items-center gap-3 opacity-70">
-                <CheckCircle2 size={16} className={item.is_auto_confirmed ? 'text-gray-400' : 'text-green-500'} />
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-gray-700">{item.item_name}</div>
-                  <div className="text-xs text-gray-400">
-                    {item.is_auto_confirmed
-                      ? '🤖 Auto-confirmed (no response within 1 hour)'
-                      : `✓ Confirmed complete`}
-                    {' · '}{item.or_room}
-                    {' · '}{format(new Date(item.dispensed_at), 'MMM d, h:mm a')}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+
       </div>
     </AppLayout>
   )
