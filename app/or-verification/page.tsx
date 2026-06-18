@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import AppLayout from '@/app/dashboard/layout'
 import { createClient } from '@/lib/supabase'
 import {
@@ -34,40 +34,43 @@ export default function ORVerificationPage() {
   const [verifying, setVerifying] = useState<string | null>(null)
   const [discrepancyNotes, setDiscrepancyNotes] = useState<Record<string, string>>({})
   const [currentUser, setCurrentUser] = useState<{ id: string; name: string } | null>(null)
-  const [confirmed, setConfirmed] = useState<string[]>([])
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (!user) return
       supabase.from('profiles').select('full_name').eq('id', user.id).single()
-        .then(({ data }) => setCurrentUser({ id: user.id, name: data?.full_name || user.email?.split('@')[0] || 'Staff' }))
+        .then(({ data }) => {
+          const cu = { id: user.id, name: data?.full_name || user.email?.split('@')[0] || 'Staff' }
+          setCurrentUser(cu)
+          loadPending(cu.id)
+        })
     })
-    loadPending()
-    // Auto-refresh every 30 seconds to catch auto-confirmations
-    const interval = setInterval(checkAutoConfirm, 30000)
+
+    const interval = setInterval(() => {
+      if (currentUser) checkAutoConfirm()
+    }, 30000)
     return () => clearInterval(interval)
   }, [])
 
-  async function loadPending() {
+  async function loadPending(userId: string) {
     setLoading(true)
-    // Get all dispensed items
-    const { data: dispensed } = await supabase
+
+    // Only get dispense records where this user is the receiver
+    const { data: myDispenses } = await supabase
       .from('dispense_records')
       .select('*')
+      .eq('received_by_id', userId)
       .order('created_at', { ascending: false })
 
-    if (!dispensed) { setLoading(false); return }
+    if (!myDispenses || myDispenses.length === 0) {
+      setPending([])
+      setLoading(false)
+      return
+    }
 
     const result: PendingVerification[] = []
 
-    for (const dr of dispensed) {
-      // Check if already verified
-      const { data: verif } = await supabase
-        .from('or_verifications')
-        .select('*')
-        .eq('dispense_record_id', dr.id)
-        .single()
-
+    for (const dr of myDispenses) {
       // Check item is still dispensed
       const { data: itemData } = await supabase
         .from('inventory_items')
@@ -77,9 +80,16 @@ export default function ORVerificationPage() {
 
       if (!itemData || itemData.status !== 'dispensed') continue
 
+      // Check if already verified
+      const { data: verif } = await supabase
+        .from('or_verifications')
+        .select('*')
+        .eq('dispense_record_id', dr.id)
+        .single()
+
       const dispensedAt = new Date(dr.created_at)
       const minutesSince = differenceInMinutes(new Date(), dispensedAt)
-      const deadline = new Date(dispensedAt.getTime() + 60 * 60 * 1000) // 1 hour
+      const deadline = new Date(dispensedAt.getTime() + 60 * 60 * 1000)
 
       // Get contents
       const { data: contents } = await supabase
@@ -111,7 +121,6 @@ export default function ORVerificationPage() {
   }
 
   async function checkAutoConfirm() {
-    // Auto-confirm items past 1-hour deadline
     const now = new Date()
     for (const item of pending) {
       if (item.is_verified) continue
@@ -120,12 +129,11 @@ export default function ORVerificationPage() {
         await autoConfirm(item)
       }
     }
-    loadPending()
+    if (currentUser) loadPending(currentUser.id)
   }
 
   async function autoConfirm(item: PendingVerification) {
-    const now = new Date().toISOString()
-    const { data: newVerif } = await supabase.from('or_verifications').insert({
+    await supabase.from('or_verifications').insert({
       item_id: item.item_id,
       item_name: item.item_name,
       item_qr_code: item.item_qr_code,
@@ -137,29 +145,26 @@ export default function ORVerificationPage() {
       is_complete: true,
       is_auto_confirmed: true,
       auto_confirm_deadline: item.auto_confirm_deadline,
-      verified_at: now,
+      verified_at: new Date().toISOString(),
       verified_by_name: 'System (auto-confirmed)',
-    }).select().single()
+    })
 
-    if (newVerif) {
-      await supabase.from('audit_logs').insert({
-        item_id: item.item_id,
-        item_name: item.item_name,
-        item_qr_code: item.item_qr_code,
-        action: 'or_verification_auto_confirmed',
-        performed_by_id: null,
-        performed_by_name: 'System',
-        location: item.or_room,
-        device_used: 'Automated',
-        notes: `Auto-confirmed complete — no OR staff response within 1 hour. Received by: ${item.received_by_name}`,
-      })
-    }
+    await supabase.from('audit_logs').insert({
+      item_id: item.item_id,
+      item_name: item.item_name,
+      item_qr_code: item.item_qr_code,
+      action: 'or_verification_auto_confirmed',
+      performed_by_id: null,
+      performed_by_name: 'System',
+      location: item.or_room,
+      device_used: 'Automated',
+      notes: `Auto-confirmed complete — no response within 1 hour. Received by: ${item.received_by_name}`,
+    })
   }
 
   async function confirmComplete(item: PendingVerification, isComplete: boolean) {
     if (!currentUser) return
     setVerifying(item.dispense_id)
-    const now = new Date().toISOString()
     const notes = discrepancyNotes[item.dispense_id] || null
 
     await supabase.from('or_verifications').insert({
@@ -177,7 +182,7 @@ export default function ORVerificationPage() {
       is_auto_confirmed: false,
       discrepancy_notes: notes,
       auto_confirm_deadline: item.auto_confirm_deadline,
-      verified_at: now,
+      verified_at: new Date().toISOString(),
     })
 
     await supabase.from('audit_logs').insert({
@@ -205,10 +210,9 @@ export default function ORVerificationPage() {
       })
     }
 
-    setConfirmed(c => [...c, item.dispense_id])
     setVerifying(null)
     setExpandedId(null)
-    loadPending()
+    loadPending(currentUser.id)
   }
 
   const unverified = pending.filter(p => !p.is_verified)
@@ -221,15 +225,15 @@ export default function ORVerificationPage() {
           <h1 className="text-xl font-semibold text-gray-800 flex items-center gap-2">
             <ClipboardCheck size={22} className="text-brand-500" />
             OR Verification
-            {unverified.length > 0 && (
-              <span className="w-5 h-5 bg-red-500 text-white text-[11px] font-bold rounded-full flex items-center justify-center">
-                !
-              </span>
-            )}
           </h1>
           <p className="text-sm text-gray-500 mt-1">
-            Confirm instrument set completeness after opening in the OR
+            Confirm completeness of instrument sets received by you
           </p>
+          {currentUser && (
+            <p className="text-xs text-brand-600 mt-0.5 flex items-center gap-1">
+              <User size={11} /> Showing sets received by: <strong>{currentUser.name}</strong>
+            </p>
+          )}
         </div>
 
         {/* Info banner */}
@@ -239,8 +243,8 @@ export default function ORVerificationPage() {
             <div>
               <p className="text-sm font-medium text-amber-800">1-Hour Confirmation Window</p>
               <p className="text-xs text-amber-700 mt-0.5">
-                Please confirm the completeness of each instrument set within <strong>1 hour</strong> of receiving it.
-                If no confirmation is made, the system will automatically record it as complete.
+                Please confirm completeness of each set within <strong>1 hour</strong> of receiving it.
+                If no action is taken, the system will automatically record it as complete.
               </p>
             </div>
           </div>
@@ -249,19 +253,26 @@ export default function ORVerificationPage() {
         {loading ? (
           <div className="card p-8 text-center text-gray-400">
             <Loader2 size={24} className="animate-spin mx-auto mb-2" />
-            Loading…
+            Loading your items…
           </div>
-        ) : unverified.length === 0 ? (
+        ) : unverified.length === 0 && verified.length === 0 ? (
           <div className="card p-10 text-center">
             <CheckCircle2 size={40} className="text-green-400 mx-auto mb-3" />
-            <p className="font-medium text-gray-600">All sets verified! 🎉</p>
-            <p className="text-sm text-gray-400 mt-1">No pending verifications.</p>
+            <p className="font-medium text-gray-600">Nothing to verify</p>
+            <p className="text-sm text-gray-400 mt-1">
+              No instrument sets have been dispensed to you yet.
+            </p>
+          </div>
+        ) : unverified.length === 0 ? (
+          <div className="card p-8 text-center mb-4">
+            <CheckCircle2 size={36} className="text-green-400 mx-auto mb-3" />
+            <p className="font-medium text-gray-600">All your sets are verified! 🎉</p>
           </div>
         ) : (
           <div className="space-y-3 mb-6">
             <h2 className="text-sm font-medium text-gray-600 flex items-center gap-2">
               <AlertTriangle size={14} className="text-amber-500" />
-              Pending Verification ({unverified.length})
+              Pending Your Verification ({unverified.length})
             </h2>
             {unverified.map(item => {
               const isExpanded = expandedId === item.dispense_id
@@ -270,7 +281,8 @@ export default function ORVerificationPage() {
               const isOverdue = minutesLeft <= 0
 
               return (
-                <div key={item.dispense_id} className={`card overflow-hidden border ${isOverdue ? 'border-red-200' : isUrgent ? 'border-amber-200' : 'border-gray-100'}`}>
+                <div key={item.dispense_id}
+                  className={`card overflow-hidden border ${isOverdue ? 'border-red-200' : isUrgent ? 'border-amber-200' : 'border-gray-100'}`}>
                   <button
                     onClick={() => setExpandedId(isExpanded ? null : item.dispense_id)}
                     className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-gray-50 transition-colors">
@@ -281,7 +293,6 @@ export default function ORVerificationPage() {
                       <div className="text-sm font-medium text-gray-800">{item.item_name}</div>
                       <div className="text-xs text-gray-400 mt-0.5 flex items-center gap-3 flex-wrap">
                         <span>📍 {item.or_room}</span>
-                        <span className="flex items-center gap-1"><User size={10} /> {item.received_by_name}</span>
                         <span>Dispensed {format(new Date(item.dispensed_at), 'h:mm a')}</span>
                       </div>
                     </div>
@@ -289,13 +300,14 @@ export default function ORVerificationPage() {
                       <div className={`text-xs font-bold ${isOverdue ? 'text-red-600' : isUrgent ? 'text-amber-600' : 'text-gray-500'}`}>
                         {isOverdue ? 'OVERDUE' : `${minutesLeft}min left`}
                       </div>
-                      {isExpanded ? <ChevronUp size={15} className="text-gray-400 ml-auto mt-1" /> : <ChevronDown size={15} className="text-gray-400 ml-auto mt-1" />}
+                      {isExpanded
+                        ? <ChevronUp size={15} className="text-gray-400 ml-auto mt-1" />
+                        : <ChevronDown size={15} className="text-gray-400 ml-auto mt-1" />}
                     </div>
                   </button>
 
                   {isExpanded && (
                     <div className="border-t border-gray-100 p-4 space-y-4">
-                      {/* Contents list */}
                       {item.contents.length > 0 && (
                         <div>
                           <p className="text-xs font-medium text-gray-600 mb-2">Expected contents:</p>
@@ -312,34 +324,36 @@ export default function ORVerificationPage() {
                         </div>
                       )}
 
-                      {/* Discrepancy notes */}
                       <div>
                         <label className="block text-xs font-medium text-gray-600 mb-1">
-                          Discrepancy notes (if any items are missing or damaged)
+                          Discrepancy notes <span className="text-gray-400">(required if reporting a problem)</span>
                         </label>
                         <textarea
                           value={discrepancyNotes[item.dispense_id] || ''}
                           onChange={e => setDiscrepancyNotes(n => ({ ...n, [item.dispense_id]: e.target.value }))}
-                          placeholder="e.g. 1× Mayo Scissors missing, 2× Towel Clips…"
+                          placeholder="e.g. 1× Mayo Scissors missing…"
                           rows={2}
                           className="input-field resize-none text-sm"
                         />
                       </div>
 
-                      {/* Action buttons */}
                       <div className="flex gap-2">
                         <button
                           onClick={() => confirmComplete(item, false)}
                           disabled={verifying === item.dispense_id || !discrepancyNotes[item.dispense_id]?.trim()}
                           className="flex-1 py-2.5 rounded-xl text-sm font-semibold border-2 border-red-300 bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-40 transition-colors flex items-center justify-center gap-1.5">
-                          {verifying === item.dispense_id ? <Loader2 size={14} className="animate-spin" /> : <AlertTriangle size={14} />}
+                          {verifying === item.dispense_id
+                            ? <Loader2 size={14} className="animate-spin" />
+                            : <AlertTriangle size={14} />}
                           Report Discrepancy
                         </button>
                         <button
                           onClick={() => confirmComplete(item, true)}
                           disabled={verifying === item.dispense_id}
                           className="flex-1 py-2.5 rounded-xl text-sm font-semibold bg-green-600 hover:bg-green-700 text-white disabled:opacity-40 transition-colors flex items-center justify-center gap-1.5">
-                          {verifying === item.dispense_id ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                          {verifying === item.dispense_id
+                            ? <Loader2 size={14} className="animate-spin" />
+                            : <CheckCircle2 size={14} />}
                           All Complete ✓
                         </button>
                       </div>
@@ -354,15 +368,20 @@ export default function ORVerificationPage() {
         {/* Verified items */}
         {verified.length > 0 && (
           <div className="space-y-2">
-            <h2 className="text-sm font-medium text-gray-500">Recently Verified ({verified.length})</h2>
+            <h2 className="text-sm font-medium text-gray-500">
+              Recently Verified ({verified.length})
+            </h2>
             {verified.slice(0, 5).map(item => (
               <div key={item.dispense_id} className="card px-4 py-3 flex items-center gap-3 opacity-70">
                 <CheckCircle2 size={16} className={item.is_auto_confirmed ? 'text-gray-400' : 'text-green-500'} />
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium text-gray-700">{item.item_name}</div>
                   <div className="text-xs text-gray-400">
-                    {item.is_auto_confirmed ? '🤖 Auto-confirmed (no response)' : `✓ Verified by ${item.received_by_name}`}
+                    {item.is_auto_confirmed
+                      ? '🤖 Auto-confirmed (no response within 1 hour)'
+                      : `✓ Confirmed complete`}
                     {' · '}{item.or_room}
+                    {' · '}{format(new Date(item.dispensed_at), 'MMM d, h:mm a')}
                   </div>
                 </div>
               </div>
