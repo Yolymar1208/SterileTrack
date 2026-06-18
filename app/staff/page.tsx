@@ -96,7 +96,7 @@ export default function StaffPage() {
       performed_by_name: staff.find(s => s.id === currentUser)?.full_name || 'Admin',
       notes: `QR code ${selectedQR} paired to ${member?.full_name}`,
       device_used: 'Web Browser',
-    }).catch(() => {}) // non-blocking
+ })
 
     setSaving(false)
     setPairingId(null)
