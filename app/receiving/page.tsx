@@ -1,327 +1,392 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import AppLayout from '@/app/dashboard/layout'
 import { createClient } from '@/lib/supabase'
-import { Search, Plus, Package, ChevronRight, RefreshCw } from 'lucide-react'
-import { InventoryItem, STATUS_CONFIG, ItemStatus, ItemType } from '@/lib/types'
+import {
+  ClipboardCheck, Package, CheckCircle2, Clock, AlertTriangle,
+  ChevronDown, ChevronUp, Loader2, User
+} from 'lucide-react'
+import { format, differenceInMinutes } from 'date-fns'
 
-const STATUS_FILTERS: { value: ItemStatus | 'all'; label: string }[] = [
-  { value: 'all', label: 'All Items' },
-  { value: 'sterile', label: 'Sterile' },
-  { value: 'received', label: 'Received' },
-  { value: 'packed', label: 'Packed' },
-  { value: 'dispensed', label: 'At OR' },
-  { value: 'missing', label: 'Missing' },
-  { value: 'damaged', label: 'Damaged' },
-]
+interface PendingVerification {
+  dispense_id: string
+  item_id: string
+  item_name: string
+  item_qr_code: string
+  or_room: string
+  received_by_name: string
+  received_by_id: string | null
+  dispensed_at: string
+  minutes_since_dispense: number
+  auto_confirm_deadline: string
+  verification_id: string | null
+  is_verified: boolean
+  is_auto_confirmed: boolean
+  contents: { instrument_name: string; quantity: number }[]
+}
 
-export default function InventoryPage() {
+export default function ORVerificationPage() {
   const supabase = createClient()
-  const router = useRouter()
-  const [items, setItems] = useState<InventoryItem[]>([])
-  const [filtered, setFiltered] = useState<InventoryItem[]>([])
-  const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState<ItemStatus | 'all'>('all')
+  const [pending, setPending] = useState<PendingVerification[]>([])
   const [loading, setLoading] = useState(true)
-  const [showAddModal, setShowAddModal] = useState(false)
-  const [confirmUpdateId, setConfirmUpdateId] = useState<string | null>(null)
-  const [updating, setUpdating] = useState(false)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [verifying, setVerifying] = useState<string | null>(null)
+  const [discrepancyNotes, setDiscrepancyNotes] = useState<Record<string, string>>({})
   const [currentUser, setCurrentUser] = useState<{ id: string; name: string } | null>(null)
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (!user) return
       supabase.from('profiles').select('full_name').eq('id', user.id).single()
-        .then(({ data }) => setCurrentUser({ id: user.id, name: data?.full_name || user.email?.split('@')[0] || 'Staff' }))
+        .then(({ data }) => {
+          const cu = { id: user.id, name: data?.full_name || user.email?.split('@')[0] || 'Staff' }
+          setCurrentUser(cu)
+          loadPending(cu.id)
+        })
     })
-    loadItems()
+
+    const interval = setInterval(() => {
+      if (currentUser) checkAutoConfirm()
+    }, 30000)
+    return () => clearInterval(interval)
   }, [])
 
-  useEffect(() => {
-    let result = items
-    if (statusFilter !== 'all') result = result.filter(i => i.status === statusFilter)
-    if (search) {
-      const q = search.toLowerCase()
-      result = result.filter(i =>
-        i.name.toLowerCase().includes(q) ||
-        i.qr_code.toLowerCase().includes(q) ||
-        (i.location || '').toLowerCase().includes(q) ||
-        (i.description || '').toLowerCase().includes(q)
-      )
-    }
-    setFiltered(result)
-  }, [items, search, statusFilter])
-
-  async function loadItems() {
+  async function loadPending(userId: string) {
     setLoading(true)
-    const { data } = await supabase.from('inventory_items').select('*').order('name')
-    setItems(data || [])
+
+    const now = new Date()
+
+    // Only get dispense records where this user is the receiver
+    const { data: myDispenses } = await supabase
+      .from('dispense_records')
+      .select('*')
+      .eq('received_by_id', userId)
+      .order('created_at', { ascending: false })
+
+    if (!myDispenses || myDispenses.length === 0) {
+      setPending([])
+      setLoading(false)
+      return
+    }
+
+    const result: PendingVerification[] = []
+
+    for (const dr of myDispenses) {
+      const dispensedAt = new Date(dr.created_at)
+      const deadline = new Date(dispensedAt.getTime() + 60 * 60 * 1000)
+      const minutesSince = differenceInMinutes(now, dispensedAt)
+      const isOverdue = now > deadline
+
+      // SKIP: already has a verification record (manually verified or auto-confirmed)
+      const { data: verif } = await supabase
+        .from('or_verifications')
+        .select('id')
+        .eq('dispense_record_id', dr.id)
+        .single()
+
+      if (verif) {
+        // Already verified — skip entirely, do not show
+        continue
+      }
+
+      // SKIP: past 1-hour deadline — auto-confirm and log, then skip
+      if (isOverdue) {
+        await autoConfirm({
+          dispense_id: dr.id,
+          item_id: dr.item_id,
+          item_name: dr.item_name,
+          item_qr_code: dr.item_qr_code,
+          or_room: dr.or_room,
+          received_by_name: dr.received_by_name,
+          received_by_id: dr.received_by_id,
+          dispensed_at: dr.created_at,
+          minutes_since_dispense: minutesSince,
+          auto_confirm_deadline: deadline.toISOString(),
+          verification_id: null,
+          is_verified: false,
+          is_auto_confirmed: false,
+          contents: [],
+        })
+        // Skip — do not add to the visible list
+        continue
+      }
+
+      // SKIP: item is no longer dispensed (already returned to CSSD)
+      const { data: itemData } = await supabase
+        .from('inventory_items')
+        .select('status')
+        .eq('id', dr.item_id)
+        .single()
+
+      if (!itemData || itemData.status !== 'dispensed') continue
+
+      // Get contents
+      const { data: contents } = await supabase
+        .from('set_contents')
+        .select('instrument_name, quantity')
+        .eq('set_id', dr.item_id)
+        .order('sort_order')
+
+      // Only add items that are active, within 1 hour, and unverified
+      result.push({
+        dispense_id: dr.id,
+        item_id: dr.item_id,
+        item_name: dr.item_name,
+        item_qr_code: dr.item_qr_code,
+        or_room: dr.or_room,
+        received_by_name: dr.received_by_name,
+        received_by_id: dr.received_by_id,
+        dispensed_at: dr.created_at,
+        minutes_since_dispense: minutesSince,
+        auto_confirm_deadline: deadline.toISOString(),
+        verification_id: null,
+        is_verified: false,
+        is_auto_confirmed: false,
+        contents: contents || [],
+      })
+    }
+
+    setPending(result)
     setLoading(false)
   }
 
-  async function handleUpdate(item: InventoryItem) {
-    if (!currentUser) return
-    setUpdating(true)
+  async function checkAutoConfirm() {
+    // Just reload — loadPending handles auto-confirming overdue items automatically
+    if (currentUser) loadPending(currentUser.id)
+  }
 
-    await supabase.from('inventory_items').update({
-      status: 'received',
-      location: 'CSSD Receiving Area',
-      last_user_id: currentUser.id,
-      last_user_name: currentUser.name,
-      updated_at: new Date().toISOString(),
-    }).eq('id', item.id)
-
-    await supabase.from('audit_logs').insert({
-      item_id: item.id,
-      item_name: item.name,
-      item_qr_code: item.qr_code,
-      action: 'received_at_cssd',
-      performed_by_id: currentUser.id,
-      performed_by_name: currentUser.name,
-      location: 'CSSD Receiving Area',
-      device_used: 'Web Browser',
-      notes: `Set marked unsterile and sent to Receiving for contents update by ${currentUser.name}`,
+  async function autoConfirm(item: PendingVerification) {
+    await supabase.from('or_verifications').insert({
+      item_id: item.item_id,
+      item_name: item.item_name,
+      item_qr_code: item.item_qr_code,
+      dispense_record_id: item.dispense_id,
+      dispensed_at: item.dispensed_at,
+      or_room: item.or_room,
+      received_by_name: item.received_by_name,
+      received_by_id: item.received_by_id,
+      is_complete: true,
+      is_auto_confirmed: true,
+      auto_confirm_deadline: item.auto_confirm_deadline,
+      verified_at: new Date().toISOString(),
+      verified_by_name: 'System (auto-confirmed)',
     })
 
-    setUpdating(false)
-    setConfirmUpdateId(null)
-    // Redirect to receiving with QR pre-loaded
-    router.push(`/receiving?qr=${encodeURIComponent(item.qr_code)}`)
+    await supabase.from('audit_logs').insert({
+      item_id: item.item_id,
+      item_name: item.item_name,
+      item_qr_code: item.item_qr_code,
+      action: 'or_verification_auto_confirmed',
+      performed_by_id: null,
+      performed_by_name: 'System',
+      location: item.or_room,
+      device_used: 'Automated',
+      notes: `Auto-confirmed complete — no response within 1 hour. Received by: ${item.received_by_name}`,
+    })
   }
+
+  async function confirmComplete(item: PendingVerification, isComplete: boolean) {
+    if (!currentUser) return
+    setVerifying(item.dispense_id)
+    const notes = discrepancyNotes[item.dispense_id] || null
+
+    await supabase.from('or_verifications').insert({
+      item_id: item.item_id,
+      item_name: item.item_name,
+      item_qr_code: item.item_qr_code,
+      dispense_record_id: item.dispense_id,
+      dispensed_at: item.dispensed_at,
+      or_room: item.or_room,
+      received_by_name: item.received_by_name,
+      received_by_id: item.received_by_id,
+      verified_by_id: currentUser.id,
+      verified_by_name: currentUser.name,
+      is_complete: isComplete,
+      is_auto_confirmed: false,
+      discrepancy_notes: notes,
+      auto_confirm_deadline: item.auto_confirm_deadline,
+      verified_at: new Date().toISOString(),
+    })
+
+    await supabase.from('audit_logs').insert({
+      item_id: item.item_id,
+      item_name: item.item_name,
+      item_qr_code: item.item_qr_code,
+      action: isComplete ? 'or_verification_confirmed_complete' : 'or_verification_discrepancy_reported',
+      performed_by_id: currentUser.id,
+      performed_by_name: currentUser.name,
+      location: item.or_room,
+      device_used: 'Web Browser',
+      notes: isComplete
+        ? `Contents confirmed complete by ${currentUser.name} at ${item.or_room}`
+        : `Discrepancy reported by ${currentUser.name}: ${notes || 'No details'}`,
+    })
+
+    if (!isComplete && notes) {
+      await supabase.from('alerts').insert({
+        alert_type: 'or_discrepancy',
+        severity: 'critical',
+        title: `OR discrepancy reported: ${item.item_name}`,
+        body: `Reported by ${currentUser.name} at ${item.or_room}: ${notes}`,
+        item_id: item.item_id,
+        item_name: item.item_name,
+      })
+    }
+
+    setVerifying(null)
+    setExpandedId(null)
+    // Remove immediately from local state so it disappears without waiting for reload
+    setPending(prev => prev.filter(p => p.dispense_id !== item.dispense_id))
+    loadPending(currentUser.id)
+  }
+
+  // pending now only contains active, unverified, within-deadline items
 
   return (
     <AppLayout>
-      <div className="p-4 md:p-6 max-w-5xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-xl font-semibold text-gray-800 flex items-center gap-2">
-              <Package size={22} className="text-brand-500" /> Inventory
-            </h1>
-            <p className="text-sm text-gray-500 mt-0.5">{items.length} total items</p>
-          </div>
-          <button onClick={() => setShowAddModal(true)} className="btn-primary text-sm px-3 py-2">
-            <Plus size={15} /> Add Item
-          </button>
+      <div className="p-4 md:p-6 max-w-3xl mx-auto">
+        <div className="mb-6">
+          <h1 className="text-xl font-semibold text-gray-800 flex items-center gap-2">
+            <ClipboardCheck size={22} className="text-brand-500" />
+            OR Verification
+          </h1>
+          <p className="text-sm text-gray-500 mt-1">
+            Confirm completeness of instrument sets received by you
+          </p>
+          {currentUser && (
+            <p className="text-xs text-brand-600 mt-0.5 flex items-center gap-1">
+              <User size={11} /> Showing sets received by: <strong>{currentUser.name}</strong>
+            </p>
+          )}
         </div>
 
-        <div className="card p-4 mb-4">
-          <div className="relative mb-3">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input type="text" value={search} onChange={e => setSearch(e.target.value)}
-              placeholder="Search by name, QR code, location…" className="input-field pl-9" />
-          </div>
-          <div className="flex gap-2 flex-wrap">
-            {STATUS_FILTERS.map(f => (
-              <button key={f.value} onClick={() => setStatusFilter(f.value)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all border ${
-                  statusFilter === f.value
-                    ? 'bg-brand-500 text-white border-brand-500'
-                    : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
-                }`}>
-                {f.label}
-                {f.value !== 'all' && (
-                  <span className="ml-1.5 opacity-70">
-                    {items.filter(i => i.status === f.value).length}
-                  </span>
-                )}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="card divide-y divide-gray-50">
-          {loading ? (
-            <div className="p-8 text-center text-gray-400 text-sm">Loading inventory…</div>
-          ) : filtered.length === 0 ? (
-            <div className="p-8 text-center">
-              <Package size={32} className="text-gray-300 mx-auto mb-3" />
-              <p className="text-gray-500 text-sm font-medium">No items found</p>
+        {/* Info banner */}
+        <div className="card p-4 mb-4 bg-amber-50 border border-amber-200">
+          <div className="flex items-start gap-3">
+            <Clock size={18} className="text-amber-600 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-medium text-amber-800">1-Hour Confirmation Window</p>
+              <p className="text-xs text-amber-700 mt-0.5">
+                Please confirm completeness of each set within <strong>1 hour</strong> of receiving it.
+                If no action is taken, the system will automatically record it as complete.
+              </p>
             </div>
-          ) : filtered.map(item => {
-            const cfg = STATUS_CONFIG[item.status]
-            const isExpiringSoon = item.expiry_date &&
-              new Date(item.expiry_date) < new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) &&
-              item.status !== 'expired'
-            const isSterile = item.status === 'sterile'
+          </div>
+        </div>
 
-            return (
-              <div key={item.id} className="flex items-center gap-3 px-4 py-3.5 hover:bg-gray-50 transition-colors">
-                <div className="w-9 h-9 bg-brand-50 rounded-xl flex items-center justify-center flex-shrink-0">
-                  <Package size={17} className="text-brand-500" />
-                </div>
-                <Link href={`/inventory/${item.id}`} className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm font-medium text-gray-800 truncate">{item.name}</p>
-                    {isExpiringSoon && (
-                      <span className="text-[10px] font-medium bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded flex-shrink-0">
-                        Expires soon
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-3 mt-0.5">
-                    <span className="text-xs text-gray-400 font-mono">{item.qr_code}</span>
-                    {item.location && <span className="text-xs text-gray-400">{item.location}</span>}
-                  </div>
-                </Link>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  {cfg && (
-                    <span className="text-[11px] font-medium px-2.5 py-1 rounded-full"
-                      style={{ background: cfg.bg, color: cfg.color }}>
-                      {cfg.label}
-                    </span>
-                  )}
-                  {/* Update button — only for Sterile items */}
-                  {isSterile && (
-                    <button
-                      onClick={() => setConfirmUpdateId(item.id)}
-                      className="flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 rounded-lg border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors"
-                      title="Mark as unsterile and send to Receiving">
-                      <RefreshCw size={11} /> Update
-                    </button>
-                  )}
-                  <Link href={`/inventory/${item.id}`}>
-                    <ChevronRight size={15} className="text-gray-300" />
-                  </Link>
-                </div>
+        {loading ? (
+          <div className="card p-8 text-center text-gray-400">
+            <Loader2 size={24} className="animate-spin mx-auto mb-2" />
+            Loading your items…
+          </div>
+        ) : pending.length === 0 ? (
+          <div className="card p-10 text-center">
+            <CheckCircle2 size={40} className="text-green-400 mx-auto mb-3" />
+            <p className="font-medium text-gray-600">All clear! 🎉</p>
+            <p className="text-sm text-gray-400 mt-1">
+              No instrument sets pending verification.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <h2 className="text-sm font-medium text-gray-600 flex items-center gap-2">
+              <AlertTriangle size={14} className="text-amber-500" />
+              Pending Your Verification ({pending.length})
+            </h2>
+            {pending.map(item => {
+              const isExpanded = expandedId === item.dispense_id
+              const minutesLeft = 60 - item.minutes_since_dispense
+              const isUrgent = minutesLeft < 15
 
-                {/* Confirm Update Dialog */}
-                {confirmUpdateId === item.id && (
-                  <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-2xl w-full max-w-sm p-6 text-center shadow-xl">
-                      <div className="w-14 h-14 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <RefreshCw size={26} className="text-amber-600" />
+              return (
+                <div key={item.dispense_id}
+                  className={`card overflow-hidden border ${isUrgent ? 'border-amber-200' : 'border-gray-100'}`}>
+                  <button
+                    onClick={() => setExpandedId(isExpanded ? null : item.dispense_id)}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-gray-50 transition-colors">
+                    <div className="w-9 h-9 bg-blue-50 rounded-xl flex items-center justify-center flex-shrink-0">
+                      <Package size={17} className="text-blue-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-gray-800">{item.item_name}</div>
+                      <div className="text-xs text-gray-400 mt-0.5 flex items-center gap-3 flex-wrap">
+                        <span>📍 {item.or_room}</span>
+                        <span>Dispensed {format(new Date(item.dispensed_at), 'h:mm a')}</span>
                       </div>
-                      <h3 className="font-semibold text-gray-800 text-lg mb-2">Update {item.name}?</h3>
-                      <p className="text-sm text-gray-500 mb-1">
-                        This will mark the set as <strong>unsterile</strong> and send it to the Receiving Area.
-                      </p>
-                      <p className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2 mb-5">
-                        Opening a sterile pack makes it unsterile. It must go through receiving and re-sterilization before use.
-                      </p>
-                      <div className="flex gap-3">
-                        <button onClick={() => setConfirmUpdateId(null)}
-                          className="btn-secondary flex-1 justify-center">
-                          Cancel
+                    </div>
+                    <div className="flex-shrink-0 text-right">
+                      <div className={`text-xs font-bold ${isUrgent ? 'text-amber-600' : 'text-gray-500'}`}>
+                        {minutesLeft}min left
+                      </div>
+                      {isExpanded
+                        ? <ChevronUp size={15} className="text-gray-400 ml-auto mt-1" />
+                        : <ChevronDown size={15} className="text-gray-400 ml-auto mt-1" />}
+                    </div>
+                  </button>
+
+                  {isExpanded && (
+                    <div className="border-t border-gray-100 p-4 space-y-4">
+                      {item.contents.length > 0 && (
+                        <div>
+                          <p className="text-xs font-medium text-gray-600 mb-2">Expected contents:</p>
+                          <div className="grid grid-cols-2 gap-1.5 max-h-48 overflow-y-auto">
+                            {item.contents.map((c, i) => (
+                              <div key={i} className="flex items-center gap-2 bg-gray-50 rounded-lg px-2.5 py-1.5">
+                                <span className="text-xs font-mono bg-white border border-gray-200 rounded px-1.5 py-0.5 text-gray-600 flex-shrink-0">
+                                  ×{c.quantity}
+                                </span>
+                                <span className="text-xs text-gray-700 truncate">{c.instrument_name}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">
+                          Discrepancy notes <span className="text-gray-400">(required if reporting a problem)</span>
+                        </label>
+                        <textarea
+                          value={discrepancyNotes[item.dispense_id] || ''}
+                          onChange={e => setDiscrepancyNotes(n => ({ ...n, [item.dispense_id]: e.target.value }))}
+                          placeholder="e.g. 1× Mayo Scissors missing…"
+                          rows={2}
+                          className="input-field resize-none text-sm"
+                        />
+                      </div>
+
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => confirmComplete(item, false)}
+                          disabled={verifying === item.dispense_id || !discrepancyNotes[item.dispense_id]?.trim()}
+                          className="flex-1 py-2.5 rounded-xl text-sm font-semibold border-2 border-red-300 bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-40 transition-colors flex items-center justify-center gap-1.5">
+                          {verifying === item.dispense_id
+                            ? <Loader2 size={14} className="animate-spin" />
+                            : <AlertTriangle size={14} />}
+                          Report Discrepancy
                         </button>
-                        <button onClick={() => handleUpdate(item)} disabled={updating}
-                          className="flex-1 bg-amber-500 hover:bg-amber-600 text-white font-semibold py-2.5 rounded-xl text-sm flex items-center justify-center gap-2">
-                          {updating ? <><RefreshCw size={14} className="animate-spin" /> Sending…</> : '→ Send to Receiving'}
+                        <button
+                          onClick={() => confirmComplete(item, true)}
+                          disabled={verifying === item.dispense_id}
+                          className="flex-1 py-2.5 rounded-xl text-sm font-semibold bg-green-600 hover:bg-green-700 text-white disabled:opacity-40 transition-colors flex items-center justify-center gap-1.5">
+                          {verifying === item.dispense_id
+                            ? <Loader2 size={14} className="animate-spin" />
+                            : <CheckCircle2 size={14} />}
+                          All Complete ✓
                         </button>
                       </div>
                     </div>
-                  </div>
-                )}
-              </div>
-            )
-          })}
-        </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
 
-        {showAddModal && <AddItemModal onClose={() => setShowAddModal(false)} onSaved={loadItems} />}
+        {/* Verified items */}
+
       </div>
     </AppLayout>
-  )
-}
-
-function AddItemModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
-  const supabase = createClient()
-  const [form, setForm] = useState({
-    name: '', qr_code: '', item_type: 'instrument_set' as ItemType,
-    description: '', location: '', shelf_location: '', expiry_date: ''
-  })
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-
-  async function handleSave() {
-    if (!form.name || !form.qr_code) { setError('Name and QR Code are required'); return }
-    setLoading(true)
-    const { data: { user } } = await supabase.auth.getUser()
-    const { data: profile } = await supabase.from('profiles').select('full_name').eq('id', user!.id).single()
-    const { data: newItem, error: err } = await supabase.from('inventory_items').insert({
-      ...form, expiry_date: form.expiry_date || null, status: 'sterile',
-    }).select().single()
-    if (err) { setError(err.message); setLoading(false); return }
-    await supabase.from('audit_logs').insert({
-      item_id: newItem.id, item_name: newItem.name, item_qr_code: newItem.qr_code,
-      action: 'created',
-      performed_by_id: user!.id,
-      performed_by_name: profile?.full_name || user?.email?.split('@')[0] || 'Staff',
-      device_used: 'Web Browser',
-    })
-    onSaved(); onClose()
-  }
-
-  return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
-        <div className="p-5 border-b border-gray-100">
-          <h2 className="font-semibold text-gray-800">Add New Item</h2>
-        </div>
-        <div className="p-5 space-y-4">
-          {error && <div className="bg-red-50 text-red-700 text-sm rounded-lg px-4 py-3">{error}</div>}
-          {[
-            { key: 'name', label: 'Item Name *', placeholder: 'e.g. Major Set 001' },
-            { key: 'qr_code', label: 'QR Code *', placeholder: 'e.g. MAJOR-003', mono: true },
-            { key: 'description', label: 'Description', placeholder: 'Brief description…' },
-          ].map(f => (
-            <div key={f.key}>
-              <label className="block text-sm font-medium text-gray-700 mb-1">{f.label}</label>
-              <input type="text" value={(form as any)[f.key]}
-                onChange={e => setForm(prev => ({ ...prev, [f.key]: e.target.value }))}
-                placeholder={f.placeholder}
-                className={`input-field ${(f as any).mono ? 'font-mono' : ''}`} />
-            </div>
-          ))}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Shelf Location</label>
-            <div className="flex gap-2 flex-wrap mb-2">
-              {[
-                'Sterile Room Shelf A','Sterile Room Shelf B','Sterile Room Shelf C',
-                'Sterile Room Shelf D','Sterile Room Shelf E','Sterile Room Shelf F',
-                'Sterile Room Shelf G','Sterile Room Shelf H','Sterile Room Shelf I',
-                'Sterile Room Shelf J'
-              ].map(s => (
-                <button key={s} type="button"
-                  onClick={() => setForm(f => ({ ...f, shelf_location: s, location: 'Storage' }))}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
-                    form.shelf_location === s
-                      ? 'bg-brand-500 text-white border-brand-500'
-                      : 'bg-white text-gray-600 border-gray-200 hover:border-brand-300'
-                  }`}>
-                  {s}
-                </button>
-              ))}
-            </div>
-            <input type="text" value={form.shelf_location}
-              onChange={e => setForm(f => ({ ...f, shelf_location: e.target.value, location: 'Storage' }))}
-              placeholder="Or type a custom shelf location…"
-              className="input-field text-sm" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Item Type</label>
-            <select value={form.item_type} onChange={e => setForm(f => ({ ...f, item_type: e.target.value as ItemType }))} className="input-field">
-              <option value="instrument_set">Instrument Set</option>
-              <option value="sterile_pack">Sterile Pack</option>
-              <option value="implant">Implant</option>
-              <option value="consumable">Consumable</option>
-              <option value="equipment">Equipment</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Expiry Date</label>
-            <input type="date" value={form.expiry_date}
-              onChange={e => setForm(f => ({ ...f, expiry_date: e.target.value }))} className="input-field" />
-          </div>
-        </div>
-        <div className="p-5 border-t border-gray-100 flex gap-3">
-          <button onClick={onClose} className="btn-secondary flex-1 justify-center">Cancel</button>
-          <button onClick={handleSave} disabled={loading} className="btn-primary flex-1 justify-center">
-            {loading ? 'Saving…' : 'Add Item'}
-          </button>
-        </div>
-      </div>
-    </div>
   )
 }
