@@ -272,7 +272,7 @@ export default function DashboardPage() {
         {[
           { label: 'Sterile ready',  val: stats?.sterile_count,        sub: 'Storage shelf',  subColor: '#16A34A', numColor: '#0D1117', iconColor: '#16A34A', iconBg: 'rgba(22,163,74,0.07)',    href: '/storage', iconName: 'ti-check' },
           { label: 'At OR now',      val: stats?.dispensed_count,      sub: null,              subColor: null,      numColor: '#0D1117', iconColor: '#2563EB', iconBg: 'rgba(37,99,235,0.07)',    href: null,       iconName: 'ti-package' },
-          { label: 'Item Alerts',  val: stats?.missing_count,        sub: 'Needs attention', subColor: '#EF4444', numColor: '#EF4444', iconColor: '#EF4444', iconBg: 'rgba(239,68,68,0.07)',    href: '/alerts',  iconName: 'ti-alert-triangle' },
+          { label: 'Item Alerts',  val: stats?.active_alerts_count,        sub: 'Needs attention', subColor: '#EF4444', numColor: '#EF4444', iconColor: '#EF4444', iconBg: 'rgba(239,68,68,0.07)',    href: '/alerts',  iconName: 'ti-alert-triangle' },
           { label: 'Expiring soon',  val: stats?.expiring_soon_count,  sub: 'Within 7 days',  subColor: '#D97706', numColor: '#D97706', iconColor: '#D97706', iconBg: 'rgba(217,119,6,0.07)',    href: null,       iconName: 'ti-clock' },
         ].map(c => {
           const inner = (
