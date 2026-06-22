@@ -66,7 +66,12 @@ export default function StoragePage() {
     load()
   }
 
-  const COMMON_SHELVES = ['Shelf A1','Shelf A2','Shelf B1','Shelf B2','Shelf C1','Shelf C2','Shelf D1','Shelf D2']
+  const COMMON_SHELVES = [
+    'Sterile Room Shelf A','Sterile Room Shelf B','Sterile Room Shelf C',
+    'Sterile Room Shelf D','Sterile Room Shelf E','Sterile Room Shelf F',
+    'Sterile Room Shelf G','Sterile Room Shelf H','Sterile Room Shelf I',
+    'Sterile Room Shelf J'
+  ]
 
   const filtered = items.filter(i => !search ||
     i.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -123,29 +128,29 @@ export default function StoragePage() {
                       <div key={item.id}>
                         {isEditing ? (
                           <div className="px-4 py-3 bg-blue-50 space-y-2">
-                            <p className="text-xs font-medium text-gray-700">Edit location for <strong>{item.name}</strong></p>
+                            <p className="text-xs font-medium text-gray-700">Edit shelf for <strong>{item.name}</strong></p>
                             <div className="flex gap-2 flex-wrap mb-1">
                               {COMMON_SHELVES.map(s => (
-                                <button key={s} onClick={() => setEditLocation({...editLocation, shelf_location: s})}
+                                <button key={s} onClick={() => setEditLocation({ shelf_location: s, location: 'Storage' })}
                                   className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all ${
-                                    editLocation.shelf_location === s ? 'bg-brand-500 text-white border-brand-500' : 'bg-white text-gray-600 border-gray-200'
+                                    editLocation.shelf_location === s
+                                      ? 'bg-brand-500 text-white border-brand-500'
+                                      : 'bg-white text-gray-600 border-gray-200 hover:border-brand-300'
                                   }`}>
                                   {s}
                                 </button>
                               ))}
                             </div>
                             <input type="text" value={editLocation.shelf_location}
-                              onChange={e => setEditLocation({...editLocation, shelf_location: e.target.value})}
-                              placeholder="Or type shelf location…" className="input-field text-sm" />
-                            <input type="text" value={editLocation.location}
-                              onChange={e => setEditLocation({...editLocation, location: e.target.value})}
-                              placeholder="Storage area (e.g. Storage Room A)" className="input-field text-sm" />
+                              onChange={e => setEditLocation({ shelf_location: e.target.value, location: 'Storage' })}
+                              placeholder="Or type a custom shelf location…"
+                              className="input-field text-sm" />
                             <div className="flex gap-2">
                               <button onClick={() => setEditingId(null)} className="btn-secondary text-xs px-3 py-1.5">
                                 <X size={12} /> Cancel
                               </button>
                               <button onClick={() => saveLocation(item)} disabled={saving} className="btn-primary text-xs px-3 py-1.5">
-                                {saving ? 'Saving…' : <><Save size={12} /> Save Location</>}
+                                {saving ? 'Saving…' : <><Save size={12} /> Save</>}
                               </button>
                             </div>
                           </div>
