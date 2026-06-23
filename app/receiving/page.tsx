@@ -95,6 +95,18 @@ export default function ReceivingPage() {
     } else {
       inputRef.current?.focus()
     }
+
+    // Pre-fill "Returned By" with the user who pressed Update in Inventory
+    const returnedById = searchParams.get('returnedById')
+    if (returnedById) {
+      supabase.from('profiles')
+        .select('id, full_name, role, employee_id, qr_code, avatar_initials')
+        .eq('id', returnedById)
+        .single()
+        .then(({ data }) => {
+          if (data) setReturnedByStaff(data)
+        })
+    }
   }, [])
 
   async function loadDispensedItems() {
