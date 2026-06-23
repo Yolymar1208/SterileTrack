@@ -250,14 +250,17 @@ export default function ReceivingPage() {
     setContents(c => c.map(i => ({ ...i, checked: !allChecked })))
   }
 
-  async function updateReceivedQty(contentId: string, newQty: number, originalQty: number) {
-    // Update local state immediately for UI responsiveness
+  // onChange: only update local UI — no DB write, no alert (prevents per-keystroke spam)
+  function setReceivedQtyLocal(contentId: string, newQty: number) {
     setContents(c => c.map(i => i.id === contentId ? { ...i, receivedQty: newQty } : i))
+  }
 
+  // onBlur: fires once when user leaves the field — persists to DB and creates alert if needed
+  async function commitReceivedQty(contentId: string, newQty: number, originalQty: number) {
     const target = contents.find(c => c.id === contentId)
     if (!target || !item) return
 
-    // Persist the received quantity to the database so it carries over to next steps
+    // Persist the final quantity
     await supabase.from('set_contents').update({
       quantity: newQty,
     }).eq('id', contentId)
@@ -688,8 +691,12 @@ export default function ReceivingPage() {
                                   type="number" min={0} max={c.quantity}
                                   value={c.receivedQty}
                                   onChange={e => {
-                                    const newQty = parseInt(e.target.value) || 0
-                                    updateReceivedQty(c.id, newQty, c.quantity)
+                                    // Only update display — no DB/alert on every keystroke
+                                    setReceivedQtyLocal(c.id, parseInt(e.target.value) || 0)
+                                  }}
+                                  onBlur={e => {
+                                    // Commit to DB and fire alert exactly once when done editing
+                                    commitReceivedQty(c.id, parseInt(e.target.value) || 0, c.quantity)
                                   }}
                                   className="w-16 text-center text-sm border border-gray-200 rounded-lg px-2 py-1 focus:ring-2 focus:ring-brand-400 focus:outline-none"
                                 />
