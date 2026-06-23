@@ -88,8 +88,8 @@ export default function InventoryPage() {
 
     setUpdating(false)
     setConfirmUpdateId(null)
-    // Redirect to receiving with QR pre-loaded
-    router.push(`/receiving?qr=${encodeURIComponent(item.qr_code)}`)
+    // Redirect to receiving with QR pre-loaded and current user pre-filled as returnedBy
+    router.push(`/receiving?qr=${encodeURIComponent(item.qr_code)}&returnedById=${encodeURIComponent(currentUser.id)}`)
   }
 
   return (
