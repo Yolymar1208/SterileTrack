@@ -81,14 +81,16 @@ export default function SetDetailPage() {
 
   async function saveEdit(itemId: string) {
     const original = contents.find(c => c.id === itemId)
+    // Allow qty 0 — valid for tracking purposes (item missing/empty)
+    const safeQty = Math.max(0, editValues.qty)
     await supabase.from('set_contents').update({
       instrument_name: editValues.name,
-      quantity: editValues.qty,
+      quantity: safeQty,
     }).eq('id', itemId)
-    setContents(c => c.map(i => i.id === itemId ? { ...i, instrument_name: editValues.name, quantity: editValues.qty } : i))
+    setContents(c => c.map(i => i.id === itemId ? { ...i, instrument_name: editValues.name, quantity: safeQty } : i))
     if (original) {
       await logSetEdit('Edited instrument',
-        `"${original.instrument_name}" → "${editValues.name}" (qty: ${original.quantity} → ${editValues.qty})`)
+        `"${original.instrument_name}" → "${editValues.name}" (qty: ${original.quantity} → ${safeQty})`)
     }
     setEditingId(null)
   }
@@ -138,20 +140,22 @@ export default function SetDetailPage() {
                         onChange={e => setEditValues({...editValues, name: e.target.value})}
                         onKeyDown={e => e.key === 'Enter' && saveEdit(c.id)}
                         className="input-field flex-1 text-sm" autoFocus />
-                      <input type="number" min={1} value={editValues.qty}
-                        onChange={e => setEditValues({...editValues, qty: parseInt(e.target.value) || 1})}
-                        className="input-field w-16 text-sm" />
-                      {/* Save */}
+                      {/* qty allows 0 */}
+                      <input
+                        type="number"
+                        min={0}
+                        value={editValues.qty}
+                        onChange={e => setEditValues({...editValues, qty: e.target.value === '' ? 0 : parseInt(e.target.value)})}
+                        className="input-field w-16 text-sm"
+                      />
                       <button onClick={() => saveEdit(c.id)}
                         className="p-1.5 text-green-600 hover:bg-green-50 rounded transition-colors" title="Save">
                         <Save size={15} />
                       </button>
-                      {/* Delete — only visible in edit mode */}
                       <button onClick={() => removeItem(c.id)}
                         className="p-1.5 text-red-500 hover:bg-red-50 rounded transition-colors" title="Delete">
                         <Trash2 size={15} />
                       </button>
-                      {/* Cancel */}
                       <button onClick={() => setEditingId(null)}
                         className="p-1.5 text-gray-400 hover:bg-gray-100 rounded transition-colors" title="Cancel">
                         <X size={15} />
@@ -159,9 +163,15 @@ export default function SetDetailPage() {
                     </>
                   ) : (
                     <>
-                      <div className="flex-1 text-sm text-gray-700">{c.instrument_name}</div>
-                      <span className="text-xs font-mono bg-white px-2 py-0.5 rounded border border-gray-200 text-gray-600">×{c.quantity}</span>
-                      {/* Edit — only icon shown by default */}
+                      <div className="flex-1 text-sm text-gray-700 flex items-center gap-2">
+                        {c.instrument_name}
+                        {c.quantity === 0 && (
+                          <span className="text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-medium">Missing</span>
+                        )}
+                      </div>
+                      <span className={`text-xs font-mono px-2 py-0.5 rounded border text-gray-600 ${
+                        c.quantity === 0 ? 'bg-red-50 border-red-200 text-red-600' : 'bg-white border-gray-200'
+                      }`}>×{c.quantity}</span>
                       <button onClick={() => startEdit(c)}
                         className="p-1.5 text-gray-400 hover:text-brand-500 hover:bg-brand-50 rounded transition-colors" title="Edit">
                         <Edit2 size={14} />
@@ -182,9 +192,13 @@ export default function SetDetailPage() {
                 onKeyDown={e => e.key === 'Enter' && addItem()}
                 placeholder='e.g. Mayo Scissors 6"'
                 className="input-field flex-1 text-sm" />
-              <input type="number" min={1} value={newInstr.qty}
-                onChange={e => setNewInstr({...newInstr, qty: parseInt(e.target.value) || 1})}
-                className="input-field w-16 text-sm" />
+              <input
+                type="number"
+                min={0}
+                value={newInstr.qty}
+                onChange={e => setNewInstr({...newInstr, qty: e.target.value === '' ? 0 : parseInt(e.target.value)})}
+                className="input-field w-16 text-sm"
+              />
               <button onClick={addItem} disabled={!newInstr.name.trim()} className="btn-primary px-3 text-sm">
                 <Plus size={14} />
               </button>
@@ -196,6 +210,7 @@ export default function SetDetailPage() {
         <div className="card p-4 bg-blue-50 border border-blue-100">
           <p className="text-xs text-blue-700">
             📋 All edits to this instrument list are logged in the Audit Trail for accountability.
+            Setting a quantity to 0 marks an instrument as missing in the checklist.
           </p>
         </div>
       </div>
