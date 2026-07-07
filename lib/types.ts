@@ -6,8 +6,42 @@ export type ItemType = 'instrument_set' | 'sterile_pack' | 'implant' | 'consumab
 
 export type ActionType = string
 
-export type UserRole = 'cssd_technician' | 'cssd_supervisor' | 'or_nurse' | 'or_supervisor'
-  | 'materials_management' | 'purchasing' | 'infection_control' | 'hospital_admin' | 'system_admin'
+export type UserRole =
+  | 'cssd_technician' | 'cssd_supervisor' | 'or_nurse' | 'or_supervisor'
+  | 'materials_management' | 'purchasing' | 'infection_control'
+  | 'hospital_admin' | 'system_admin'
+
+export type HospitalStatus = 'trial' | 'active' | 'inactive' | 'suspended'
+
+export interface Plan {
+  id: string
+  name: string
+  max_staff: number | null
+  max_sets: number | null
+  has_audit_export: boolean
+  has_analytics: boolean
+  has_or_verification: boolean
+  price_monthly: number
+  created_at: string
+}
+
+export interface Hospital {
+  id: string
+  name: string
+  slug: string
+  address: string | null
+  contact_person: string | null
+  contact_email: string | null
+  contact_phone: string | null
+  plan_id: string | null
+  status: HospitalStatus
+  trial_ends_at: string | null
+  activated_at: string | null
+  notes: string | null
+  created_at: string
+  updated_at: string
+  plan?: Plan
+}
 
 export interface InventoryItem {
   id: string
@@ -23,6 +57,7 @@ export interface InventoryItem {
   current_remarks: string | null
   last_user_id: string | null
   last_user_name: string | null
+  hospital_id: string
   created_at: string
   updated_at: string
 }
@@ -44,6 +79,7 @@ export interface Profile {
   employee_id: string | null
   qr_code: string | null
   avatar_initials: string | null
+  hospital_id: string
 }
 
 export interface AuditLog {
@@ -58,19 +94,20 @@ export interface AuditLog {
   location: string | null
   device_used: string | null
   notes: string | null
+  hospital_id: string
   created_at: string
 }
 
 export const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
   sterile:   { label: 'Sterile (Ready)', color: '#276749', bg: '#C6F6D5' },
   dispensed: { label: 'At OR',           color: '#2B6CB0', bg: '#BEE3F8' },
-  received:  { label: 'Received',         color: '#975A16', bg: '#FEFCBF' },
-  packed:    { label: 'Packed',           color: '#C05621', bg: '#FEEBC8' },
-  in_or:     { label: 'At OR',            color: '#2B6CB0', bg: '#BEE3F8' },
-  storage:   { label: 'Storage',           color: '#2C7A7B', bg: '#E6FFFA' },
-  missing:   { label: 'Missing',           color: '#9B2C2C', bg: '#FED7D7' },
-  damaged:   { label: 'Damaged',           color: '#744210', bg: '#FEEBC8' },
-  expired:   { label: 'Expired',           color: '#553C9A', bg: '#EBF4FF' },
+  received:  { label: 'Received',        color: '#975A16', bg: '#FEFCBF' },
+  packed:    { label: 'Packed',          color: '#C05621', bg: '#FEEBC8' },
+  in_or:     { label: 'At OR',           color: '#2B6CB0', bg: '#BEE3F8' },
+  storage:   { label: 'Storage',         color: '#2C7A7B', bg: '#E6FFFA' },
+  missing:   { label: 'Missing',         color: '#9B2C2C', bg: '#FED7D7' },
+  damaged:   { label: 'Damaged',         color: '#744210', bg: '#FEEBC8' },
+  expired:   { label: 'Expired',         color: '#553C9A', bg: '#EBF4FF' },
 }
 
 export const ACTION_LABELS: Record<string, string> = {
@@ -94,4 +131,5 @@ export const ACTION_LABELS: Record<string, string> = {
   released_to_storage:      'Placed on Shelf',
   released_to_user:         'Dispensed to Staff',
   set_contents_updated:     'Set Contents Updated',
+  staff_qr_paired:          'Staff QR Code Paired',
 }
