@@ -30,12 +30,17 @@ export default function LoginPage() {
     if (!user) { setError('Login failed.'); setLoading(false); return }
 
     // Superadmin goes to superadmin dashboard
-    // Get profile
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role, hospital_id')
-      .eq('id', user.id)
-      .single()
+    // Retry profile fetch up to 3 times (session may not be ready immediately)
+    let profile = null
+    for (let i = 0; i < 3; i++) {
+      const { data } = await supabase
+        .from('profiles')
+        .select('role, hospital_id')
+        .eq('id', user.id)
+        .single()
+      if (data) { profile = data; break }
+      await new Promise(r => setTimeout(r, 500))
+    }
 
     // Superadmin goes straight to superadmin dashboard
     if (profile?.role === 'system_admin') {
@@ -57,7 +62,12 @@ export default function LoginPage() {
       }
     }
 
-    setError('Your account is not linked to a hospital. Contact your administrator.')
+    // Last resort — check if profile exists at all
+    if (!profile) {
+      setError('Profile not found. Please contact your administrator.')
+    } else {
+      setError('Your account is not linked to a hospital. Contact your administrator.')
+    }
     setLoading(false)
   }
 
