@@ -100,7 +100,7 @@ export default function ReceivingPage() {
     const returnedById = searchParams.get('returnedById')
     if (returnedById) {
       supabase.from('profiles')
-        .select('id, full_name, role, employee_id, qr_code, avatar_initials, department')
+        .select('id, full_name, role, employee_id, qr_code, avatar_initials, department, hospital_id')
         .eq('id', returnedById)
         .single()
         .then(({ data }) => {
