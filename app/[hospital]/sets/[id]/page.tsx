@@ -97,8 +97,8 @@ export default function SetDetailPage() {
     setEditingId(null)
   }
 
-  if (loading) return <AppLayout><div className="p-8 text-center text-gray-400">Loading…</div></AppLayout>
-  if (!item) return <AppLayout><div className="p-8 text-center text-gray-400">Set not found</div></AppLayout>
+  if (loading) return <div className="p-8 text-center text-gray-400">Loading…</div>
+  if (!item) return <div className="p-8 text-center text-gray-400">Set not found</div>
 
   return (
     <>
