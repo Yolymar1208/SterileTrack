@@ -11,30 +11,53 @@ export default function LoginPage() {
   const [showPw, setShowPw]     = useState(false)
   const [loading, setLoading]   = useState(false)
   const [error, setError]       = useState('')
-  const router  = useRouter()
+  const router   = useRouter()
   const supabase = createClient()
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true); setError('')
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
-    if (error) { setError(error.message); setLoading(false) }
-    else router.push('/dashboard')
+
+    const { error: authError } = await supabase.auth.signInWithPassword({ email, password })
+    if (authError) {
+      setError(authError.message)
+      setLoading(false)
+      return
+    }
+
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) { setError('Login failed.'); setLoading(false); return }
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role, hospital_id, hospitals(slug)')
+      .eq('id', user.id)
+      .single()
+
+    if (profile?.role === 'system_admin') {
+      router.push('/superadmin')
+      return
+    }
+
+    const slug = (profile?.hospitals as any)?.slug
+    if (slug) {
+      router.push(`/${slug}/dashboard`)
+    } else {
+      setError('Your account is not linked to a hospital. Contact your administrator.')
+      setLoading(false)
+    }
   }
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4"
       style={{ background: '#0A0F1E' }}>
 
-      {/* Subtle grid overlay */}
       <div style={{
         position: 'fixed', inset: 0, pointerEvents: 'none',
         backgroundImage: 'radial-gradient(circle at 50% 0%, rgba(0,201,212,0.08) 0%, transparent 60%)',
       }} />
 
       <div className="w-full max-w-sm relative">
-
-        {/* Logo */}
         <div className="text-center mb-8">
           <div style={{
             width: 52, height: 52, borderRadius: 14, margin: '0 auto 16px',
@@ -51,7 +74,6 @@ export default function LoginPage() {
           </p>
         </div>
 
-        {/* Card */}
         <div style={{
           background: '#fff', borderRadius: 16, padding: '28px 28px 24px',
           border: '0.5px solid rgba(255,255,255,0.08)',
@@ -66,7 +88,8 @@ export default function LoginPage() {
           {error && (
             <div style={{
               background: '#FEE2E2', border: '0.5px solid #FCA5A5',
-              color: '#B91C1C', fontSize: 13, borderRadius: 8, padding: '10px 12px', marginBottom: 16
+              color: '#B91C1C', fontSize: 13, borderRadius: 8,
+              padding: '10px 12px', marginBottom: 16
             }}>
               {error}
             </div>
@@ -78,8 +101,7 @@ export default function LoginPage() {
                 Email
               </label>
               <input type="email" value={email} onChange={e => setEmail(e.target.value)}
-                placeholder="you@hospital.com" required
-                className="input-field" />
+                placeholder="you@hospital.com" required className="input-field" />
             </div>
 
             <div>
@@ -105,9 +127,9 @@ export default function LoginPage() {
               style={{
                 width: '100%', padding: '10px 0', borderRadius: 9, border: 'none',
                 background: loading ? '#9CA3AF' : '#00C9D4',
-                color: '#fff', fontSize: 14, fontWeight: 500, cursor: loading ? 'not-allowed' : 'pointer',
-                letterSpacing: '-0.1px', transition: 'background 0.15s',
-                marginTop: 4,
+                color: '#fff', fontSize: 14, fontWeight: 500,
+                cursor: loading ? 'not-allowed' : 'pointer',
+                letterSpacing: '-0.1px', transition: 'background 0.15s', marginTop: 4,
               }}>
               {loading ? 'Signing in…' : 'Sign in'}
             </button>
@@ -119,7 +141,7 @@ export default function LoginPage() {
         </div>
 
         <p style={{ textAlign: 'center', color: 'rgba(255,255,255,0.18)', fontSize: 11, marginTop: 20 }}>
-          © {new Date().getFullYear()} SterileTrack · by Yoly
+          © {new Date().getFullYear()} SterileTrack · CSSD Management
         </p>
       </div>
     </div>
