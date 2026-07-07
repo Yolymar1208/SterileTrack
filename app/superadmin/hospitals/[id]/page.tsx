@@ -149,7 +149,7 @@ export default function HospitalDetailPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          <a href={`https://steriletrack.com/${hospital.slug}/dashboard`} target="_blank"
+          <a href={`https://steriletrak.com/${hospital.slug}/dashboard`} target="_blank"
             className="flex items-center gap-1.5 text-xs text-brand-500 font-medium px-3 py-2 rounded-lg hover:bg-brand-50">
             <ExternalLink size={13} /> Open App
           </a>
