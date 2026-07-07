@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 import { Shield, Eye, EyeOff } from 'lucide-react'
 
@@ -11,7 +10,6 @@ export default function LoginPage() {
   const [showPw, setShowPw]     = useState(false)
   const [loading, setLoading]   = useState(false)
   const [error, setError]       = useState('')
-  const router   = useRouter()
   const supabase = createClient()
 
   async function handleLogin(e: React.FormEvent) {
@@ -57,7 +55,7 @@ export default function LoginPage() {
 
       // Step 4: Superadmin check
       if (profile.role === 'system_admin') {
-        router.push('/superadmin')
+        window.location.href = '/superadmin'
         return
       }
 
@@ -86,8 +84,8 @@ export default function LoginPage() {
         return
       }
 
-      // Step 6: Redirect
-      router.push(`/${hospital.slug}/dashboard`)
+      // Step 6: Hard redirect — forces full page navigation
+      window.location.href = `/${hospital.slug}/dashboard`
 
     } catch (err: any) {
       setError('Unexpected error: ' + err.message)
