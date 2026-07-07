@@ -25,27 +25,40 @@ export default function LoginPage() {
       return
     }
 
+    // Get the user's hospital slug and redirect to their hospital dashboard
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { setError('Login failed.'); setLoading(false); return }
 
+    // Superadmin goes to superadmin dashboard
+    // Get profile
     const { data: profile } = await supabase
       .from('profiles')
-      .select('role, hospital_id, hospitals(slug)')
+      .select('role, hospital_id')
       .eq('id', user.id)
       .single()
 
+    // Superadmin goes straight to superadmin dashboard
     if (profile?.role === 'system_admin') {
       router.push('/superadmin')
       return
     }
 
-    const slug = (profile?.hospitals as any)?.slug
-    if (slug) {
-      router.push(`/${slug}/dashboard`)
-    } else {
-      setError('Your account is not linked to a hospital. Contact your administrator.')
-      setLoading(false)
+    // Everyone else — look up their hospital slug
+    if (profile?.hospital_id) {
+      const { data: hospital } = await supabase
+        .from('hospitals')
+        .select('slug')
+        .eq('id', profile.hospital_id)
+        .single()
+
+      if (hospital?.slug) {
+        router.push(`/${hospital.slug}/dashboard`)
+        return
+      }
     }
+
+    setError('Your account is not linked to a hospital. Contact your administrator.')
+    setLoading(false)
   }
 
   return (
@@ -58,6 +71,8 @@ export default function LoginPage() {
       }} />
 
       <div className="w-full max-w-sm relative">
+
+        {/* Logo */}
         <div className="text-center mb-8">
           <div style={{
             width: 52, height: 52, borderRadius: 14, margin: '0 auto 16px',
@@ -74,6 +89,7 @@ export default function LoginPage() {
           </p>
         </div>
 
+        {/* Card */}
         <div style={{
           background: '#fff', borderRadius: 16, padding: '28px 28px 24px',
           border: '0.5px solid rgba(255,255,255,0.08)',
