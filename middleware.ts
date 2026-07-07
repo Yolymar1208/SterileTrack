@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 
 const PUBLIC_ROUTES = ['/', '/suspended', '/superadmin']
+const SUPERADMIN_EMAIL = 'yolymarorfiano@yahoo.com'
 
 type HospitalRow = {
   id: string
@@ -47,6 +48,28 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(new URL('/', req.url))
   }
 
+  // Superadmin can access any hospital page — skip role check
+  if (user.email === SUPERADMIN_EMAIL) {
+    // Just verify the hospital exists and is not suspended
+    const { data } = await supabase
+      .rpc('get_hospital_by_slug', { p_slug: slug })
+      .single()
+
+    const hospital = data as HospitalRow | null
+
+    if (!hospital) {
+      return NextResponse.redirect(new URL('/superadmin', req.url))
+    }
+
+    const response = NextResponse.next()
+    response.headers.set('x-hospital-id', hospital.id)
+    response.headers.set('x-hospital-slug', hospital.slug)
+    response.headers.set('x-hospital-name', hospital.name)
+    response.headers.set('x-hospital-plan', hospital.plan_name || 'Pilot')
+    return response
+  }
+
+  // Regular users — check hospital status
   const { data } = await supabase
     .rpc('get_hospital_by_slug', { p_slug: slug })
     .single()
