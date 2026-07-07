@@ -1,35 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 
-const PUBLIC_ROUTES = ['/', '/suspended', '/superadmin']
-const SUPERADMIN_EMAIL = 'yolymarorfiano@yahoo.com'
-
-type HospitalRow = {
-  id: string
-  name: string
-  slug: string
-  status: string
-  plan_name: string
-  trial_ends_at: string | null
-}
-
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
 
+  // Always allow these routes
   if (
-    PUBLIC_ROUTES.some(r => pathname === r || pathname.startsWith(r + '/')) ||
+    pathname === '/' ||
+    pathname === '/suspended' ||
+    pathname.startsWith('/suspended') ||
+    pathname.startsWith('/superadmin') ||
     pathname.startsWith('/_next') ||
     pathname.startsWith('/api') ||
     pathname.includes('.')
   ) {
     return NextResponse.next()
-  }
-
-  const segments = pathname.split('/').filter(Boolean)
-  const slug = segments[0]
-
-  if (!slug) {
-    return NextResponse.redirect(new URL('/', req.url))
   }
 
   const supabase = createServerClient(
@@ -43,60 +28,15 @@ export async function middleware(req: NextRequest) {
     }
   )
 
+  // Check authentication only
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) {
     return NextResponse.redirect(new URL('/', req.url))
   }
 
-  // Superadmin can access any hospital page — skip role check
-  if (user.email === SUPERADMIN_EMAIL) {
-    // Just verify the hospital exists and is not suspended
-    const { data } = await supabase
-      .rpc('get_hospital_by_slug', { p_slug: slug })
-      .single()
-
-    const hospital = data as HospitalRow | null
-
-    if (!hospital) {
-      return NextResponse.redirect(new URL('/superadmin', req.url))
-    }
-
-    const response = NextResponse.next()
-    response.headers.set('x-hospital-id', hospital.id)
-    response.headers.set('x-hospital-slug', hospital.slug)
-    response.headers.set('x-hospital-name', hospital.name)
-    response.headers.set('x-hospital-plan', hospital.plan_name || 'Pilot')
-    return response
-  }
-
-  // Regular users — check hospital status
-  const { data } = await supabase
-    .rpc('get_hospital_by_slug', { p_slug: slug })
-    .single()
-
-  const hospital = data as HospitalRow | null
-
-  if (!hospital) {
-    return NextResponse.redirect(new URL('/', req.url))
-  }
-
-  const now = new Date()
-  const isTrialExpired =
-    hospital.status === 'trial' &&
-    hospital.trial_ends_at &&
-    new Date(hospital.trial_ends_at) < now
-
-  if (hospital.status === 'inactive' || hospital.status === 'suspended' || isTrialExpired) {
-    return NextResponse.redirect(new URL(`/suspended?hospital=${slug}`, req.url))
-  }
-
-  const response = NextResponse.next()
-  response.headers.set('x-hospital-id', hospital.id)
-  response.headers.set('x-hospital-slug', hospital.slug)
-  response.headers.set('x-hospital-name', hospital.name)
-  response.headers.set('x-hospital-plan', hospital.plan_name || 'Starter')
-
-  return response
+  // Allow all authenticated users through
+  // Hospital scoping is handled by RLS in Supabase
+  return NextResponse.next()
 }
 
 export const config = {
