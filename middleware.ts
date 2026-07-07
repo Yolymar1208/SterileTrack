@@ -1,13 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 
-// Routes that don't need hospital context
 const PUBLIC_ROUTES = ['/', '/suspended', '/superadmin']
+
+type HospitalRow = {
+  id: string
+  name: string
+  slug: string
+  status: string
+  plan_name: string
+  trial_ends_at: string | null
+}
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
 
-  // Skip public routes and static files
   if (
     PUBLIC_ROUTES.some(r => pathname === r || pathname.startsWith(r + '/')) ||
     pathname.startsWith('/_next') ||
@@ -17,7 +24,6 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next()
   }
 
-  // Extract hospital slug from path: /bghmc/dashboard → 'bghmc'
   const segments = pathname.split('/').filter(Boolean)
   const slug = segments[0]
 
@@ -25,7 +31,6 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(new URL('/', req.url))
   }
 
-  // Create Supabase client for middleware
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -37,23 +42,21 @@ export async function middleware(req: NextRequest) {
     }
   )
 
-  // Check user is authenticated
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) {
     return NextResponse.redirect(new URL('/', req.url))
   }
 
-  // Check hospital exists and is active
-  const { data: hospital } = await supabase
+  const { data } = await supabase
     .rpc('get_hospital_by_slug', { p_slug: slug })
     .single()
 
+  const hospital = data as HospitalRow | null
+
   if (!hospital) {
-    // Hospital slug not found — redirect to login
     return NextResponse.redirect(new URL('/', req.url))
   }
 
-  // Check hospital status
   const now = new Date()
   const isTrialExpired =
     hospital.status === 'trial' &&
@@ -64,7 +67,6 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(new URL(`/suspended?hospital=${slug}`, req.url))
   }
 
-  // Pass hospital info to pages via headers
   const response = NextResponse.next()
   response.headers.set('x-hospital-id', hospital.id)
   response.headers.set('x-hospital-slug', hospital.slug)
