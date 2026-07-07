@@ -9,45 +9,48 @@ import {
   TrendingUp, Shield
 } from 'lucide-react'
 
-type HospitalRow = {
-  id: string
-  name: string
-  slug: string
-  status: string
-  trial_ends_at: string | null
-  activated_at: string | null
-  created_at: string
-  contact_email: string | null
-  contact_person: string | null
-  plan: { name: string; price_monthly: number } | null
-  staff_count: number
-  set_count: number
-  alert_count: number
-}
-
-const STATUS_STYLE: Record<string, { label: string; color: string; bg: string; icon: any }> = {
-  active:    { label: 'Active',    color: '#276749', bg: '#C6F6D5', icon: CheckCircle },
-  trial:     { label: 'Trial',     color: '#975A16', bg: '#FEFCBF', icon: Clock },
-  inactive:  { label: 'Inactive',  color: '#9B2C2C', bg: '#FED7D7', icon: XCircle },
-  suspended: { label: 'Suspended', color: '#744210', bg: '#FEEBC8', icon: AlertTriangle },
+const STATUS_STYLE: Record<string, { label: string; color: string; bg: string }> = {
+  active:    { label: 'Active',    color: '#276749', bg: '#C6F6D5' },
+  trial:     { label: 'Trial',     color: '#975A16', bg: '#FEFCBF' },
+  inactive:  { label: 'Inactive',  color: '#9B2C2C', bg: '#FED7D7' },
+  suspended: { label: 'Suspended', color: '#744210', bg: '#FEEBC8' },
 }
 
 export default function SuperadminPage() {
   const supabase = createClient()
-  const [hospitals, setHospitals] = useState<HospitalRow[]>([])
+  const [hospitals, setHospitals] = useState<any[]>([])
   const [loading, setLoading]     = useState(true)
+  const [debugMsg, setDebugMsg]   = useState('')
 
   useEffect(() => { load() }, [])
 
   async function load() {
-    const { data: hosps } = await supabase
+    setLoading(true)
+
+    // Simple direct query — no joins
+    const { data: hosps, error } = await supabase
       .from('hospitals')
-      .select('*, plan:plans(name, price_monthly)')
+      .select('*')
       .order('created_at', { ascending: false })
 
-    if (!hosps) { setLoading(false); return }
+    if (error) {
+      setDebugMsg('Error: ' + error.message)
+      setLoading(false)
+      return
+    }
 
-    const enriched = await Promise.all(hosps.map(async h => {
+    if (!hosps || hosps.length === 0) {
+      setDebugMsg('No hospitals returned from query')
+      setLoading(false)
+      return
+    }
+
+    // Fetch plans separately
+    const { data: plans } = await supabase.from('plans').select('*')
+    const planMap = Object.fromEntries((plans || []).map((p: any) => [p.id, p]))
+
+    // Fetch stats for each hospital
+    const enriched = await Promise.all(hosps.map(async (h: any) => {
       const [
         { count: staff_count },
         { count: set_count },
@@ -57,18 +60,24 @@ export default function SuperadminPage() {
         supabase.from('inventory_items').select('id', { count: 'exact', head: true }).eq('hospital_id', h.id),
         supabase.from('alerts').select('id', { count: 'exact', head: true }).eq('hospital_id', h.id).eq('is_resolved', false),
       ])
-      return { ...h, staff_count: staff_count || 0, set_count: set_count || 0, alert_count: alert_count || 0 }
+      return {
+        ...h,
+        plan: planMap[h.plan_id] || null,
+        staff_count: staff_count || 0,
+        set_count: set_count || 0,
+        alert_count: alert_count || 0,
+      }
     }))
 
     setHospitals(enriched)
+    setDebugMsg('')
     setLoading(false)
   }
 
-  // Summary stats
-  const total    = hospitals.length
-  const active   = hospitals.filter(h => h.status === 'active').length
-  const trial    = hospitals.filter(h => h.status === 'trial').length
-  const mrr      = hospitals
+  const total  = hospitals.length
+  const active = hospitals.filter(h => h.status === 'active').length
+  const trial  = hospitals.filter(h => h.status === 'trial').length
+  const mrr    = hospitals
     .filter(h => h.status === 'active')
     .reduce((sum, h) => sum + (h.plan?.price_monthly || 0), 0)
 
@@ -89,6 +98,13 @@ export default function SuperadminPage() {
           <Plus size={15} /> New Hospital
         </Link>
       </div>
+
+      {/* Debug message */}
+      {debugMsg && (
+        <div className="mb-4 p-3 rounded-xl text-sm bg-red-50 text-red-700 border border-red-200">
+          {debugMsg}
+        </div>
+      )}
 
       {/* Summary tiles */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
@@ -120,7 +136,7 @@ export default function SuperadminPage() {
         ) : hospitals.length === 0 ? (
           <div className="p-8 text-center">
             <Building2 size={32} className="text-gray-200 mx-auto mb-3" />
-            <p className="text-sm text-gray-500">No hospitals yet.</p>
+            <p className="text-sm text-gray-500">No hospitals found.</p>
             <Link href="/superadmin/hospitals/new"
               className="text-sm text-brand-500 font-medium mt-2 inline-block">
               Add your first hospital →
@@ -128,7 +144,6 @@ export default function SuperadminPage() {
           </div>
         ) : hospitals.map(h => {
           const s = STATUS_STYLE[h.status] || STATUS_STYLE.inactive
-          const StatusIcon = s.icon
           const isTrialExpired = h.status === 'trial' && h.trial_ends_at && new Date(h.trial_ends_at) < new Date()
           const daysLeft = h.trial_ends_at
             ? Math.max(0, Math.ceil((new Date(h.trial_ends_at).getTime() - Date.now()) / 86400000))
@@ -137,14 +152,11 @@ export default function SuperadminPage() {
           return (
             <Link key={h.id} href={`/superadmin/hospitals/${h.id}`}>
               <div className="px-4 py-3 hover:bg-gray-50 transition-colors flex items-center gap-3">
-
-                {/* Hospital icon */}
                 <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
                   style={{ background: 'linear-gradient(135deg, #E0FAFB, #B3F2F5)' }}>
                   <Building2 size={18} style={{ color: '#00B8C2' }} />
                 </div>
 
-                {/* Info */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-sm font-medium text-gray-800 truncate">{h.name}</span>
@@ -168,23 +180,17 @@ export default function SuperadminPage() {
                       </span>
                     )}
                     {h.status === 'trial' && daysLeft !== null && !isTrialExpired && (
-                      <span className="text-xs" style={{ color: '#D69E2E' }}>
-                        {daysLeft}d left in trial
-                      </span>
+                      <span className="text-xs" style={{ color: '#D69E2E' }}>{daysLeft}d left in trial</span>
                     )}
                     {isTrialExpired && (
-                      <span className="text-xs font-medium" style={{ color: '#E53E3E' }}>
-                        Trial expired
-                      </span>
+                      <span className="text-xs font-medium" style={{ color: '#E53E3E' }}>Trial expired</span>
                     )}
                   </div>
                 </div>
 
-                {/* Status badge */}
                 <div className="flex items-center gap-2 flex-shrink-0">
-                  <span className="flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full"
+                  <span className="text-xs font-medium px-2 py-0.5 rounded-full"
                     style={{ color: s.color, background: s.bg }}>
-                    <StatusIcon size={10} />
                     {isTrialExpired ? 'Expired' : s.label}
                   </span>
                   <ChevronRight size={15} className="text-gray-300" />
