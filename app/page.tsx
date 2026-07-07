@@ -16,59 +16,83 @@ export default function LoginPage() {
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
-    setLoading(true); setError('')
+    setLoading(true)
+    setError('')
 
-    const { error: authError } = await supabase.auth.signInWithPassword({ email, password })
-    if (authError) {
-      setError(authError.message)
-      setLoading(false)
-      return
-    }
+    try {
+      // Step 1: Sign in
+      const { error: authError } = await supabase.auth.signInWithPassword({ email, password })
+      if (authError) {
+        setError(authError.message)
+        setLoading(false)
+        return
+      }
 
-    // Get the user's hospital slug and redirect to their hospital dashboard
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { setError('Login failed.'); setLoading(false); return }
+      // Step 2: Get user
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        setError('Could not get user after login.')
+        setLoading(false)
+        return
+      }
 
-    // Superadmin goes to superadmin dashboard
-    // Retry profile fetch up to 3 times (session may not be ready immediately)
-    let profile = null
-    for (let i = 0; i < 3; i++) {
-      const { data } = await supabase
+      // Step 3: Get profile
+      const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('role, hospital_id')
         .eq('id', user.id)
         .single()
-      if (data) { profile = data; break }
-      await new Promise(r => setTimeout(r, 500))
-    }
 
-    // Superadmin goes straight to superadmin dashboard
-    if (profile?.role === 'system_admin') {
-      router.push('/superadmin')
-      return
-    }
+      if (profileError) {
+        setError('Profile error: ' + profileError.message)
+        setLoading(false)
+        return
+      }
 
-    // Everyone else — look up their hospital slug
-    if (profile?.hospital_id) {
-      const { data: hospital } = await supabase
+      if (!profile) {
+        setError('No profile found for this account.')
+        setLoading(false)
+        return
+      }
+
+      // Step 4: Superadmin check
+      if (profile.role === 'system_admin') {
+        router.push('/superadmin')
+        return
+      }
+
+      // Step 5: Get hospital slug
+      if (!profile.hospital_id) {
+        setError('Your account is not linked to a hospital.')
+        setLoading(false)
+        return
+      }
+
+      const { data: hospital, error: hospitalError } = await supabase
         .from('hospitals')
         .select('slug')
         .eq('id', profile.hospital_id)
         .single()
 
-      if (hospital?.slug) {
-        router.push(`/${hospital.slug}/dashboard`)
+      if (hospitalError) {
+        setError('Hospital error: ' + hospitalError.message)
+        setLoading(false)
         return
       }
-    }
 
-    // Last resort — check if profile exists at all
-    if (!profile) {
-      setError('Profile not found. Please contact your administrator.')
-    } else {
-      setError('Your account is not linked to a hospital. Contact your administrator.')
+      if (!hospital?.slug) {
+        setError('Hospital not found.')
+        setLoading(false)
+        return
+      }
+
+      // Step 6: Redirect
+      router.push(`/${hospital.slug}/dashboard`)
+
+    } catch (err: any) {
+      setError('Unexpected error: ' + err.message)
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   return (
@@ -81,8 +105,6 @@ export default function LoginPage() {
       }} />
 
       <div className="w-full max-w-sm relative">
-
-        {/* Logo */}
         <div className="text-center mb-8">
           <div style={{
             width: 52, height: 52, borderRadius: 14, margin: '0 auto 16px',
@@ -99,7 +121,6 @@ export default function LoginPage() {
           </p>
         </div>
 
-        {/* Card */}
         <div style={{
           background: '#fff', borderRadius: 16, padding: '28px 28px 24px',
           border: '0.5px solid rgba(255,255,255,0.08)',
