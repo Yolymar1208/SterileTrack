@@ -1,13 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
 
-  // Always allow these routes
+  // Allow all public and static routes
   if (
     pathname === '/' ||
-    pathname === '/suspended' ||
     pathname.startsWith('/suspended') ||
     pathname.startsWith('/superadmin') ||
     pathname.startsWith('/_next') ||
@@ -17,25 +15,16 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next()
   }
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() { return req.cookies.getAll() },
-        setAll() {},
-      },
-    }
+  // Check for Supabase auth cookie
+  const cookies = req.cookies.getAll()
+  const hasSession = cookies.some(c =>
+    c.name.startsWith('sb-') && c.name.endsWith('-auth-token')
   )
 
-  // Check authentication only
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) {
+  if (!hasSession) {
     return NextResponse.redirect(new URL('/', req.url))
   }
 
-  // Allow all authenticated users through
-  // Hospital scoping is handled by RLS in Supabase
   return NextResponse.next()
 }
 
