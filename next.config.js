@@ -4,8 +4,8 @@ const nextConfig = {
     serverActions: {
       allowedOrigins: [
         'localhost:3000',
-        'steriletrack.com',
-        'www.steriletrack.com',
+        'steriletrak.com',
+        'www.steriletrak.com',
         'sterile-track-pi.vercel.app',
       ],
     },
