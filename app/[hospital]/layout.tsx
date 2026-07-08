@@ -134,10 +134,48 @@ export default function HospitalLayout({ children }: { children: React.ReactNode
     }
     const css = [
       ':root { --brand: ' + accentColor + '; --brand-mid: ' + accentColor + '; }',
+
+      /* Tailwind brand classes */
       '.text-brand-500, .text-brand-400, .text-brand-300 { color: ' + accentColor + ' !important; }',
       '.bg-brand-50 { background: ' + accentColor + '18 !important; }',
+      '.border-brand-300 { border-color: ' + accentColor + '66 !important; }',
+
+      /* Buttons */
       '.btn-primary { background: ' + accentColor + ' !important; }',
       '.btn-primary:hover { background: ' + accentColor + 'dd !important; }',
+
+      /* Bottom nav active tab labels */
+      'nav a span[style] { }',
+
+      /* Any element with teal inline color */
+      '[style*="color: rgb(0, 201, 212)"] { color: ' + accentColor + ' !important; }',
+      '[style*="color: #00C9D4"] { color: ' + accentColor + ' !important; }',
+      '[style*="color: #00B8C2"] { color: ' + accentColor + ' !important; }',
+      '[style*="color:#00C9D4"] { color: ' + accentColor + ' !important; }',
+      '[style*="color:#00B8C2"] { color: ' + accentColor + ' !important; }',
+
+      /* Any element with teal inline background */
+      '[style*="background: rgb(0, 201, 212)"] { background: ' + accentColor + ' !important; }',
+      '[style*="background: #00C9D4"] { background: ' + accentColor + ' !important; }',
+      '[style*="background:#00C9D4"] { background: ' + accentColor + ' !important; }',
+      '[style*="background-color: #00C9D4"] { background-color: ' + accentColor + ' !important; }',
+
+      /* Gradient backgrounds with teal */
+      '[style*="linear-gradient(135deg, #00C9D4"] { background: linear-gradient(135deg, ' + accentColor + ', ' + accentColor + 'aa) !important; }',
+      '[style*="linear-gradient(90deg, #00C9D4"] { background: linear-gradient(90deg, ' + accentColor + ', ' + accentColor + 'aa) !important; }',
+
+      /* Border teal */
+      '[style*="border-color: #00C9D4"] { border-color: ' + accentColor + ' !important; }',
+      '[style*="borderColor: #00C9D4"] { border-color: ' + accentColor + ' !important; }',
+      '[style*="border-left: 4px solid #00C9D4"] { border-left-color: ' + accentColor + ' !important; }',
+      '[style*="borderTop"][style*="#00C9D4"] { background: ' + accentColor + ' !important; }',
+
+      /* Outline / box-shadow teal */
+      '[style*="box-shadow"][style*="0, 201, 212"] { box-shadow: 0 0 0 3px ' + accentColor + '22 !important; }',
+
+      /* Teal icon fills via stroke/fill */
+      '[style*="stroke: #00C9D4"] { stroke: ' + accentColor + ' !important; }',
+      '[style*="fill: #00C9D4"] { fill: ' + accentColor + ' !important; }',
     ].join('\n')
     styleTag.innerHTML = css
   }, [accentColor])
