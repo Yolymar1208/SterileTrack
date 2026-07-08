@@ -15,6 +15,31 @@ import {
 } from 'lucide-react'
 import { AuditLog, ACTION_LABELS } from '@/lib/types'
 
+// Animated count hook
+function useAnimatedCount(target: number | undefined, duration = 800) {
+  const [display, setDisplay] = useState(0)
+  const prev = useRef(0)
+  useEffect(() => {
+    if (target === undefined) return
+    const start = prev.current
+    const diff = target - start
+    if (diff === 0) return
+    const startTime = Date.now()
+    const tick = () => {
+      const elapsed = Date.now() - startTime
+      const progress = Math.min(elapsed / duration, 1)
+      const eased = 1 - Math.pow(1 - progress, 3)
+      setDisplay(Math.round(start + diff * eased))
+      if (progress < 1) requestAnimationFrame(tick)
+      else { prev.current = target }
+    }
+    requestAnimationFrame(tick)
+  }, [target])
+  return display
+}
+
+
+
 interface Stats {
   sterile_count: number; dispensed_count: number; received_count: number
   packed_count: number; in_or_count: number; missing_count: number
@@ -57,6 +82,12 @@ export default function DashboardPage() {
   const [showPw, setShowPw]             = useState(false)
   const [pwError, setPwError]           = useState('')
   const [uploading, setUploading]       = useState(false)
+
+  // Animated stat counters
+  const animSterile  = useAnimatedCount(stats?.sterile_count)
+  const animDisp     = useAnimatedCount(stats?.dispensed_count)
+  const animAlerts   = useAnimatedCount(stats?.active_alerts_count)
+  const animExpiring = useAnimatedCount(stats?.expiring_soon_count)
   const [uploadMsg, setUploadMsg]       = useState('')
   const [uploadFile, setUploadFile]     = useState<File | null>(null)
 
@@ -205,9 +236,9 @@ export default function DashboardPage() {
               <div style={{ width: '100%', height: '0.5px', background: 'rgba(255,255,255,0.1)', marginBottom: 10 }} />
               <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', marginBottom: 3, letterSpacing: '0.02em' }}>Dispensing Area</div>
               <div style={{ fontSize: 13, fontWeight: 500, color: 'rgba(255,255,255,0.9)', marginBottom: 8, letterSpacing: '-0.2px' }}>Release sterile sets</div>
-              <div style={{ fontSize: 30, fontWeight: 500, letterSpacing: '-1px', lineHeight: 1, color: '#4ADE80' }}>{loading ? '–' : stats?.sterile_count ?? 0}</div>
+              <div style={{ fontSize: 30, fontWeight: 500, letterSpacing: '-1px', lineHeight: 1, color: '#4ADE80' }}>{loading ? '–' : animSterile}</div>
               <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 4 }}>
-                ready &nbsp;·&nbsp; <span style={{ color: 'rgba(255,255,255,0.55)' }}>{stats?.dispensed_count ?? 0} at OR</span>
+                ready &nbsp;·&nbsp; <span style={{ color: 'rgba(255,255,255,0.55)' }}>{animDisp} at OR</span>
               </div>
             </div>
           </div>
@@ -278,10 +309,10 @@ export default function DashboardPage() {
       {/* ── Stat cards ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10, marginBottom: 14 }}>
         {[
-          { label: 'Sterile ready',  val: stats?.sterile_count,        sub: 'Storage shelf',  subColor: '#16A34A', numColor: '#0D1117', iconColor: '#16A34A', iconBg: 'rgba(22,163,74,0.07)',    href: `/${slug}/storage`, iconName: 'ti-check' },
-          { label: 'At OR now',      val: stats?.dispensed_count,      sub: null,              subColor: null,      numColor: '#0D1117', iconColor: '#2563EB', iconBg: 'rgba(37,99,235,0.07)',    href: null,       iconName: 'ti-package' },
-          { label: 'Item alerts',     val: stats?.active_alerts_count, sub: 'Needs attention', subColor: '#DC2626', numColor: '#DC2626', iconColor: '#DC2626', iconBg: 'rgba(220,38,38,0.08)',    href: `/${slug}/alerts`,  iconName: 'ti-alert-triangle' },
-          { label: 'Expiring soon',  val: stats?.expiring_soon_count,  sub: 'Within 7 days',  subColor: '#D97706', numColor: '#D97706', iconColor: '#D97706', iconBg: 'rgba(217,119,6,0.07)',    href: null,       iconName: 'ti-clock' },
+          { label: 'Sterile ready',  val: animSterile,        sub: 'Storage shelf',  subColor: '#16A34A', numColor: '#0D1117', iconColor: '#16A34A', iconBg: 'rgba(22,163,74,0.07)',    href: `/${slug}/storage`, iconName: 'ti-check' },
+          { label: 'At OR now',      val: animDisp,      sub: null,              subColor: null,      numColor: '#0D1117', iconColor: '#2563EB', iconBg: 'rgba(37,99,235,0.07)',    href: null,       iconName: 'ti-package' },
+          { label: 'Item alerts',     val: animAlerts, sub: 'Needs attention', subColor: '#DC2626', numColor: '#DC2626', iconColor: '#DC2626', iconBg: 'rgba(220,38,38,0.08)',    href: `/${slug}/alerts`,  iconName: 'ti-alert-triangle' },
+          { label: 'Expiring soon',  val: animExpiring,  sub: 'Within 7 days',  subColor: '#D97706', numColor: '#D97706', iconColor: '#D97706', iconBg: 'rgba(217,119,6,0.07)',    href: null,       iconName: 'ti-clock' },
         ].map(c => {
           const inner = (
             <div style={{
