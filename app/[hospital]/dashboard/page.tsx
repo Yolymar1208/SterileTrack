@@ -1,6 +1,7 @@
 'use client'
 
 import { useHospitalSlug } from '@/lib/hospital'
+import { FileText } from 'lucide-react'
 
 import { useEffect, useState, useRef } from 'react'
 import Link from 'next/link'
@@ -149,6 +150,10 @@ export default function DashboardPage() {
             {backingUp ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
             <span className="hidden sm:inline">Back-up</span>
           </button>
+          <Link href={`/${slug}/reports`} className="btn-secondary" style={{ padding: '6px 12px', fontSize: 12, background: '#F4F5F7', borderColor: '#DCDFE4', color: '#5A6474', display: 'flex', alignItems: 'center', gap: 4, textDecoration: 'none' }}>
+            <FileText size={13} />
+            <span className="hidden sm:inline">Report</span>
+          </Link>
           <button onClick={() => setShowUploadModal(true)} className="btn-secondary" style={{ padding: '6px 12px', fontSize: 12, background: '#F4F5F7', borderColor: '#DCDFE4', color: '#5A6474' }}>
             <Upload size={13} />
             <span className="hidden sm:inline">Upload</span>
