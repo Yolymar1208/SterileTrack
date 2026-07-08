@@ -99,7 +99,7 @@ export default function HospitalLayout({ children }: { children: React.ReactNode
 
   async function handleLogout() {
     await supabase.auth.signOut()
-    router.push('/')
+    router.push('/login')
   }
 
   const SidebarContent = () => (
