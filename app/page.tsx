@@ -9,7 +9,7 @@ import {
 } from 'lucide-react'
 
 const features = [
-  { icon: QrCode, title: 'QR-Based Tracking', desc: 'Every instrument set gets a unique QR code. Scan to receive, dispense, or verify — no manual entry, no transcription errors.' },
+  { icon: QrCode, title: 'Unique Code Tracking', desc: 'Every instrument set gets a unique code. Scan to receive, dispense, or verify — no manual entry, no transcription errors.' },
   { icon: ClipboardCheck, title: 'OR Verification', desc: 'After dispatch, OR nurses confirm instrument completeness directly in the app. Auto-confirms after 1 hour if no action is taken.' },
   { icon: Bell, title: 'Real-Time Alerts', desc: 'Quantity discrepancies, missing instruments, and expiring sterile packs trigger instant alerts — resolved before the next case.' },
   { icon: History, title: 'Permanent Audit Trail', desc: 'Every handover, inspection, and sterilization cycle is logged with timestamp and staff name. Always ready for accreditation.' },
@@ -18,7 +18,7 @@ const features = [
 ]
 
 const steps = [
-  { number: '01', label: 'Receive', title: 'Instruments arrive at CSSD', desc: 'CSSD staff scans the set QR code, inspects each instrument, records quantities, and logs who returned it from the OR.' },
+  { number: '01', label: 'Receive', title: 'Instruments arrive at CSSD', desc: 'CSSD staff scans the set unique code, inspects each instrument, records quantities, and logs who returned it from the OR.' },
   { number: '02', label: 'Sterilize', title: 'Pack, sterilize, and store', desc: 'Sets are packed, sterilization is confirmed, and assigned to a specific shelf. Expiry is tracked automatically.' },
   { number: '03', label: 'Dispense', title: 'Release to the OR', desc: 'OR nurses scan their QR badge to receive the set. A verification reminder fires — confirmed in app or auto-cleared after 1 hour.' },
 ]
