@@ -62,7 +62,11 @@ export default function SetsPage() {
           {loading ? (
             <div className="p-8 text-center text-gray-400">Loading…</div>
           ) : filtered.length === 0 ? (
-            <div className="p-8 text-center text-gray-400">No sets found</div>
+            <div className="p-10 text-center">
+              <div style={{ fontSize: 40, marginBottom: 12 }}>🗂️</div>
+              <p className="font-medium text-gray-600 text-sm">No instrument sets found</p>
+              <p className="text-xs text-gray-400 mt-1">Try adjusting your search</p>
+            </div>
           ) : filtered.map(s => (
             <div key={s.id} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors">
               <div className="w-10 h-10 bg-brand-50 rounded-xl flex items-center justify-center flex-shrink-0">
