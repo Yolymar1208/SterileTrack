@@ -17,7 +17,7 @@ export default function SuperadminLayout({ children }: { children: React.ReactNo
     async function guard() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user || user.email !== SUPERADMIN_EMAIL) {
-        router.push('/')
+        router.push('/login')
       }
     }
     guard()
@@ -25,7 +25,7 @@ export default function SuperadminLayout({ children }: { children: React.ReactNo
 
   async function handleLogout() {
     await supabase.auth.signOut()
-    router.push('/')
+    router.push('/login')
   }
 
   const NAV = [
