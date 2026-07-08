@@ -4,7 +4,7 @@ import { useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
-import { Shield, LayoutDashboard, Building2, LogOut, ChevronRight } from 'lucide-react'
+import { Shield, LayoutDashboard, Building2, LogOut, ChevronRight, CreditCard } from 'lucide-react'
 
 const SUPERADMIN_EMAIL = 'yolymarorfiano@yahoo.com'
 
@@ -31,6 +31,7 @@ export default function SuperadminLayout({ children }: { children: React.ReactNo
   const NAV = [
     { href: '/superadmin',           label: 'Overview',   icon: LayoutDashboard },
     { href: '/superadmin/hospitals', label: 'Hospitals',  icon: Building2 },
+    { href: '/superadmin/billing',   label: 'Billing',    icon: CreditCard },
   ]
 
   return (
