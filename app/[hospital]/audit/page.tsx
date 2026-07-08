@@ -191,7 +191,11 @@ export default function AuditPage() {
         ) : view === 'grouped' ? (
           <div className="space-y-2">
             {grouped.length === 0 ? (
-              <div className="card p-8 text-center text-gray-400">No records found</div>
+              <div className="card p-10 text-center">
+                <div style={{ fontSize: 40, marginBottom: 12 }}>📋</div>
+                <p className="font-medium text-gray-600 text-sm">No audit records found</p>
+                <p className="text-xs text-gray-400 mt-1">Activity logs will appear here as staff use the system</p>
+              </div>
             ) : grouped.map(grp => {
               const timeline = getMergedTimeline(grp)
               const hasAlerts = grp.alerts.length > 0
