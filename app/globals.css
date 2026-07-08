@@ -130,49 +130,118 @@ body {
   --border-card:#30363D;
 }
   
-/* Apply variables to main containers */
+/* ── Dark Mode CSS Variables ─────────────────────────────────────────────────
+   Add these to the END of your existing globals.css file
+   ─────────────────────────────────────────────────────────────────────────── */
+
+:root {
+  --bg-page:        #EDEEF0;
+  --bg-card:        #FFFFFF;
+  --bg-input:       #FFFFFF;
+  --text-primary:   #0D1117;
+  --text-secondary: #6B7280;
+  --text-muted:     #9CA3AF;
+  --border:         #E5E7EB;
+}
+
+[data-theme="dark"] {
+  --bg-page:        #0D1117;
+  --bg-card:        #161B22;
+  --bg-input:       #21262D;
+  --text-primary:   #E6EDF3;
+  --text-secondary: #8B949E;
+  --text-muted:     #6E7681;
+  --border:         #30363D;
+}
+
+/* ── Page & Card backgrounds ─────────────────────────────────────────────── */
 [data-theme="dark"] main {
   background: var(--bg-page) !important;
 }
 
 [data-theme="dark"] .card {
   background: var(--bg-card) !important;
-  border-color: var(--border-card) !important;
+  border-color: var(--border) !important;
 }
 
+/* ── ALL text elements — force readable colors ───────────────────────────── */
+[data-theme="dark"] p,
+[data-theme="dark"] span:not(.badge),
+[data-theme="dark"] div,
+[data-theme="dark"] h1,
+[data-theme="dark"] h2,
+[data-theme="dark"] h3,
+[data-theme="dark"] h4,
+[data-theme="dark"] label,
+[data-theme="dark"] td,
+[data-theme="dark"] th {
+  color: var(--text-primary);
+}
+
+/* ── Specific Tailwind text colors ───────────────────────────────────────── */
+[data-theme="dark"] .text-gray-800,
+[data-theme="dark"] .text-gray-700,
+[data-theme="dark"] .text-gray-600 {
+  color: var(--text-primary) !important;
+}
+
+[data-theme="dark"] .text-gray-500,
+[data-theme="dark"] .text-gray-400,
+[data-theme="dark"] .text-gray-300 {
+  color: var(--text-secondary) !important;
+}
+
+/* ── Inline style overrides — force all hardcoded colors ─────────────────── */
+[data-theme="dark"] [style*="color: '#0D1117'"],
+[data-theme="dark"] [style*="color: '#0A0F1E'"],
+[data-theme="dark"] [style*="color: '#111827'"],
+[data-theme="dark"] [style*="color: '#1F2937'"],
+[data-theme="dark"] [style*="color: '#374151'"],
+[data-theme="dark"] [style*="color: '#4B5563'"] {
+  color: var(--text-primary) !important;
+}
+
+[data-theme="dark"] [style*="color: '#6B7280'"],
+[data-theme="dark"] [style*="color: '#9CA3AF'"] {
+  color: var(--text-secondary) !important;
+}
+
+/* ── White backgrounds → dark card ──────────────────────────────────────── */
+[data-theme="dark"] [style*="background: '#fff'"],
+[data-theme="dark"] [style*="background: '#FFFFFF'"],
+[data-theme="dark"] [style*="background: '#ffffff'"],
+[data-theme="dark"] [style*="background-color: '#fff'"],
+[data-theme="dark"] [style*="background-color: '#FFFFFF'"],
+[data-theme="dark"] [style*="background: 'white'"],
+[data-theme="dark"] [style*="background: '#F8F9FB'"],
+[data-theme="dark"] [style*="background: '#F9FAFB'"],
+[data-theme="dark"] [style*="background: '#F3F4F6'"] {
+  background: var(--bg-card) !important;
+}
+
+/* ── Input fields ────────────────────────────────────────────────────────── */
+[data-theme="dark"] input,
+[data-theme="dark"] textarea,
+[data-theme="dark"] select,
 [data-theme="dark"] .input-field {
   background: var(--bg-input) !important;
   border-color: var(--border) !important;
   color: var(--text-primary) !important;
 }
 
-[data-theme="dark"] h1,
-[data-theme="dark"] h2,
-[data-theme="dark"] h3,
-[data-theme="dark"] .text-gray-800,
-[data-theme="dark"] .text-gray-700 {
-  color: var(--text-primary) !important;
-}
-
-[data-theme="dark"] .text-gray-500,
-[data-theme="dark"] .text-gray-600 {
-  color: var(--text-secondary) !important;
-}
-
-[data-theme="dark"] .text-gray-400,
-[data-theme="dark"] .text-gray-300 {
+[data-theme="dark"] input::placeholder,
+[data-theme="dark"] textarea::placeholder {
   color: var(--text-muted) !important;
 }
 
+/* ── Borders & dividers ──────────────────────────────────────────────────── */
+[data-theme="dark"] .border-gray-100,
+[data-theme="dark"] .border-gray-200,
 [data-theme="dark"] .divide-gray-50 > * + * {
   border-color: var(--border) !important;
 }
 
-[data-theme="dark"] .border-gray-100,
-[data-theme="dark"] .border-gray-200 {
-  border-color: var(--border) !important;
-}
-
+/* ── Hover states ────────────────────────────────────────────────────────── */
 [data-theme="dark"] .hover\:bg-gray-50:hover {
   background: rgba(255,255,255,0.04) !important;
 }
@@ -181,10 +250,18 @@ body {
   background: rgba(255,255,255,0.03) !important;
 }
 
+/* ── Brand colors stay teal ──────────────────────────────────────────────── */
+[data-theme="dark"] .text-brand-500,
+[data-theme="dark"] .text-brand-400,
+[data-theme="dark"] .text-brand-300 {
+  color: #00C9D4 !important;
+}
+
 [data-theme="dark"] .bg-brand-50 {
   background: rgba(0,201,212,0.1) !important;
 }
 
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
 [data-theme="dark"] .btn-secondary {
   background: #21262D !important;
   border-color: #30363D !important;
@@ -193,7 +270,35 @@ body {
 
 [data-theme="dark"] .btn-secondary:hover {
   background: #30363D !important;
-  color: #E6EDF3 !important;
+  color: var(--text-primary) !important;
 }
+
+/* ── Status badges — keep their colors ──────────────────────────────────── */
+[data-theme="dark"] [style*="background: '#C6F6D5'"],
+[data-theme="dark"] [style*="background: '#BEE3F8'"],
+[data-theme="dark"] [style*="background: '#FED7D7'"],
+[data-theme="dark"] [style*="background: '#FEFCBF'"],
+[data-theme="dark"] [style*="background: '#FEEBC8'"] {
+  opacity: 0.9;
+}
+
+/* ── White icon backgrounds on instrument cards ──────────────────────────── */
+[data-theme="dark"] [style*="background: '#FFFFFF'"][style*="border-radius"],
+[data-theme="dark"] [style*="background: '#fff'"][style*="border-radius"] {
+  background: #21262D !important;
+}
+
+/* ── Search/filter card areas ────────────────────────────────────────────── */
+[data-theme="dark"] [style*="background: '#F8F9FB'"],
+[data-theme="dark"] [style*="background: '#F4F5F7'"] {
+  background: #161B22 !important;
+}
+
+/* ── Print — always light ────────────────────────────────────────────────── */
+@media print {
+  [data-theme="dark"] * {
+    background: white !important;
+    color: black !important;
+  }
   
 }
