@@ -59,7 +59,7 @@ export default function HospitalLayout({ children }: { children: React.ReactNode
   useEffect(() => {
     async function load() {
       const { data: { user: authUser } } = await supabase.auth.getUser()
-      if (!authUser) { router.push('/login'); return }
+      if (!authUser) { router.push('/'); return }
 
       const { data: profile } = await supabase
         .from('profiles')
@@ -108,7 +108,7 @@ export default function HospitalLayout({ children }: { children: React.ReactNode
 
   async function handleLogout() {
     await supabase.auth.signOut()
-    router.push('/login')
+    router.push('/')
   }
 
   const SidebarContent = () => (
