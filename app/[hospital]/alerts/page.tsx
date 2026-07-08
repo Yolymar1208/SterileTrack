@@ -56,10 +56,38 @@ export default function AlertsPage() {
     loadAlerts()
   }
 
+  // Enhanced severity config — color coded by type
   const severityConfig: Record<string, any> = {
-    critical: { bg: 'bg-red-50 border-red-200', icon: AlertTriangle, iconColor: 'text-red-500' },
-    warning:  { bg: 'bg-amber-50 border-amber-200', icon: Clock, iconColor: 'text-amber-500' },
-    info:     { bg: 'bg-blue-50 border-blue-200', icon: Bell, iconColor: 'text-blue-500' },
+    critical: {
+      bg: 'bg-red-50 border-red-200',
+      icon: AlertTriangle,
+      iconColor: 'text-red-500',
+      iconBg: '#FEE2E2',
+      badge: { bg: '#FEE2E2', color: '#B91C1C', label: 'Critical' },
+    },
+    warning: {
+      bg: 'bg-amber-50 border-amber-200',
+      icon: Clock,
+      iconColor: 'text-amber-500',
+      iconBg: '#FEF3C7',
+      badge: { bg: '#FEF3C7', color: '#92400E', label: 'Warning' },
+    },
+    info: {
+      bg: 'bg-blue-50 border-blue-200',
+      icon: Bell,
+      iconColor: 'text-blue-500',
+      iconBg: '#EFF6FF',
+      badge: { bg: '#EFF6FF', color: '#1D4ED8', label: 'Info' },
+    },
+  }
+
+  // Alert type labels and colors
+  const typeConfig: Record<string, { label: string; bg: string; color: string }> = {
+    quantity_discrepancy: { label: 'Qty Discrepancy', bg: '#FEE2E2', color: '#B91C1C' },
+    or_discrepancy:       { label: 'OR Discrepancy',  bg: '#FEE2E2', color: '#B91C1C' },
+    missing_item:         { label: 'Missing Item',    bg: '#FEE2E2', color: '#B91C1C' },
+    expiring_soon:        { label: 'Expiring Soon',   bg: '#FEF3C7', color: '#92400E' },
+    damaged_item:         { label: 'Damaged',         bg: '#FFEDD5', color: '#9A3412' },
   }
 
   return (
@@ -83,35 +111,57 @@ export default function AlertsPage() {
           <div className="card p-8 text-center text-gray-400">Loading…</div>
         ) : alerts.length === 0 ? (
           <div className="card p-10 text-center">
-            <CheckCircle2 size={40} className="text-green-400 mx-auto mb-3" />
-            <p className="font-medium text-gray-600">All clear! 🎉</p>
-            <p className="text-sm text-gray-400 mt-1">No active alerts right now.</p>
+            <div style={{ fontSize: 48, marginBottom: 12 }}>✅</div>
+            <p className="font-semibold text-gray-700">All clear!</p>
+            <p className="text-sm text-gray-400 mt-1">No active alerts right now. Great work, team.</p>
           </div>
         ) : (
           <div className="space-y-3">
             {alerts.map(alert => {
               const cfg = severityConfig[alert.severity] || severityConfig.info
               const SevIcon = cfg.icon
+              const typeCfg = typeConfig[alert.alert_type]
               return (
-                <div key={alert.id} className={`card p-4 border ${cfg.bg} ${alert.is_resolved ? 'opacity-60' : ''}`}>
-                  <div className="flex items-start gap-3">
-                    <SevIcon size={18} className={`${cfg.iconColor} flex-shrink-0 mt-0.5`} />
+                <div key={alert.id}
+                  className={`card border ${cfg.bg} ${alert.is_resolved ? 'opacity-55' : ''}`}
+                  style={{ borderLeft: `4px solid ${alert.severity === 'critical' ? '#EF4444' : alert.severity === 'warning' ? '#F59E0B' : '#3B82F6'}` }}>
+                  <div className="flex items-start gap-3 p-4">
+                    {/* Icon with colored background */}
+                    <div style={{ width: 36, height: 36, borderRadius: 10, background: cfg.iconBg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <SevIcon size={17} className={cfg.iconColor} />
+                    </div>
                     <div className="flex-1 min-w-0">
-                      <div className="font-medium text-sm text-gray-800">{alert.title}</div>
-                      {alert.body && <p className="text-sm text-gray-600 mt-0.5">{alert.body}</p>}
+                      {/* Badges row */}
+                      <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                        <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 100, background: cfg.badge.bg, color: cfg.badge.color, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                          {cfg.badge.label}
+                        </span>
+                        {typeCfg && (
+                          <span style={{ fontSize: 10, fontWeight: 500, padding: '2px 8px', borderRadius: 100, background: typeCfg.bg, color: typeCfg.color }}>
+                            {typeCfg.label}
+                          </span>
+                        )}
+                        {alert.is_resolved && (
+                          <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 100, background: '#DCFCE7', color: '#166534' }}>
+                            ✓ Resolved
+                          </span>
+                        )}
+                      </div>
+                      <div className="font-semibold text-sm text-gray-800">{alert.title}</div>
+                      {alert.body && <p className="text-xs text-gray-500 mt-1 leading-relaxed">{alert.body}</p>}
                       <div className="flex items-center gap-3 mt-2 flex-wrap">
                         <span className="text-xs text-gray-400">
                           {format(new Date(alert.created_at), 'MMM d, h:mm a')}
                         </span>
                         {alert.item_id && alert.item_id !== '00000000-0000-0000-0000-000000000000' && (
-                          <Link href={`/inventory/${alert.item_id}`}
+                          <Link href={`/${slug}/inventory/${alert.item_id}`}
                             className="text-xs text-brand-500 font-medium flex items-center gap-1">
                             <Package size={11} /> View item
                           </Link>
                         )}
                         {alert.is_resolved && alert.resolved_by && (
                           <span className="text-xs text-green-600 font-medium">
-                            ✓ Resolved by {alert.resolved_by}
+                            by {alert.resolved_by}
                           </span>
                         )}
                       </div>
