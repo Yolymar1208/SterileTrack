@@ -116,8 +116,8 @@ export default function SetDetailPage() {
               <span className="font-mono">{item.qr_code}</span> · {contents.length} instruments
             </p>
           </div>
-          <Link href={`/${slug}/sets/${id}/print`} target="_blank" className="btn-secondary text-sm px-3 py-2">
-            <Printer size={14} /> Print
+          <Link href={`/${slug}/sets/${id}/checklist`} target="_blank" className="btn-secondary text-sm px-3 py-2">
+            <Printer size={14} /> Checklist
           </Link>
         </div>
 
