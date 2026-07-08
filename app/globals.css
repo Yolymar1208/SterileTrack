@@ -104,4 +104,96 @@ body {
     color: var(--text-primary);
     letter-spacing: -0.1px;
   }
+  /* ── Dark Mode CSS Variables ─────────────────────────────────────────────────
+   Add these to the END of your existing globals.css file
+   ─────────────────────────────────────────────────────────────────────────── */
+
+:root {
+  --bg-page:    #EDEEF0;
+  --bg-card:    #FFFFFF;
+  --bg-input:   #FFFFFF;
+  --text-primary:   #0D1117;
+  --text-secondary: #6B7280;
+  --text-muted:     #9CA3AF;
+  --border:     #E5E7EB;
+  --border-card:#E5E7EB;
+}
+
+[data-theme="dark"] {
+  --bg-page:    #0D1117;
+  --bg-card:    #161B22;
+  --bg-input:   #21262D;
+  --text-primary:   #E6EDF3;
+  --text-secondary: #8B949E;
+  --text-muted:     #6E7681;
+  --border:     #30363D;
+  --border-card:#30363D;
+}
+  
+/* Apply variables to main containers */
+[data-theme="dark"] main {
+  background: var(--bg-page) !important;
+}
+
+[data-theme="dark"] .card {
+  background: var(--bg-card) !important;
+  border-color: var(--border-card) !important;
+}
+
+[data-theme="dark"] .input-field {
+  background: var(--bg-input) !important;
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
+}
+
+[data-theme="dark"] h1,
+[data-theme="dark"] h2,
+[data-theme="dark"] h3,
+[data-theme="dark"] .text-gray-800,
+[data-theme="dark"] .text-gray-700 {
+  color: var(--text-primary) !important;
+}
+
+[data-theme="dark"] .text-gray-500,
+[data-theme="dark"] .text-gray-600 {
+  color: var(--text-secondary) !important;
+}
+
+[data-theme="dark"] .text-gray-400,
+[data-theme="dark"] .text-gray-300 {
+  color: var(--text-muted) !important;
+}
+
+[data-theme="dark"] .divide-gray-50 > * + * {
+  border-color: var(--border) !important;
+}
+
+[data-theme="dark"] .border-gray-100,
+[data-theme="dark"] .border-gray-200 {
+  border-color: var(--border) !important;
+}
+
+[data-theme="dark"] .hover\:bg-gray-50:hover {
+  background: rgba(255,255,255,0.04) !important;
+}
+
+[data-theme="dark"] .bg-gray-50 {
+  background: rgba(255,255,255,0.03) !important;
+}
+
+[data-theme="dark"] .bg-brand-50 {
+  background: rgba(0,201,212,0.1) !important;
+}
+
+[data-theme="dark"] .btn-secondary {
+  background: #21262D !important;
+  border-color: #30363D !important;
+  color: #8B949E !important;
+}
+
+[data-theme="dark"] .btn-secondary:hover {
+  background: #30363D !important;
+  color: #E6EDF3 !important;
+}
+  
 }
