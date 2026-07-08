@@ -1,6 +1,7 @@
 'use client'
 import OnboardingWizard from '@/components/OnboardingWizard'
 import NotificationsPanel from '@/components/NotificationsPanel'
+import { useTheme } from '@/components/ThemeProvider'
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
@@ -10,7 +11,7 @@ import {
   LayoutDashboard, Package, Inbox, Send,
   Archive, ListChecks, History, Bell,
   Shield, LogOut, Menu, ChevronRight,
-  Users, ClipboardCheck, Settings, X
+  Users, ClipboardCheck, Settings, X, Moon, Sun
 } from 'lucide-react'
 
 const SUPERADMIN_EMAIL = 'yolymarorfiano@yahoo.com'
@@ -22,6 +23,7 @@ export default function HospitalLayout({ children }: { children: React.ReactNode
   const supabase = createClient()
   const slug     = params?.hospital as string
 
+  const { theme, toggle: toggleTheme } = useTheme()
   const [sidebarOpen, setSidebarOpen]       = useState(false)
   const [user, setUser]                     = useState<{ name: string; role: string; initials: string; id: string; email: string } | null>(null)
   const [hospitalName, setHospitalName]     = useState('')
@@ -177,6 +179,9 @@ export default function HospitalLayout({ children }: { children: React.ReactNode
               <div style={{ color: 'rgba(255,255,255,0.85)', fontSize: 12, fontWeight: 500 }} className="truncate">{user.name}</div>
               <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: 10 }} className="truncate capitalize">{user.role}</div>
             </div>
+            <button onClick={toggleTheme} style={{ color: 'rgba(255,255,255,0.25)', background: 'none', border: 'none', cursor: 'pointer', padding: 4 }} title={theme === 'dark' ? 'Light mode' : 'Dark mode'}>
+              {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
+            </button>
             <button onClick={handleLogout} style={{ color: 'rgba(255,255,255,0.25)', background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}>
               <LogOut size={14} />
             </button>
@@ -224,6 +229,10 @@ export default function HospitalLayout({ children }: { children: React.ReactNode
             <span style={{ fontWeight: 500, fontSize: 15, color: '#fff', letterSpacing: '-0.3px' }}>SterileTrack</span>
           </div>
           <NotificationsPanel slug={slug} initialCount={alertCount} />
+          <button onClick={toggleTheme}
+            style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', padding: 4 }}>
+            {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+          </button>
           <button onClick={() => setSidebarOpen(true)}
             style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.6)', cursor: 'pointer', padding: 4 }}>
             <Menu size={22} />
