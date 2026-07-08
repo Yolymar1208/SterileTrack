@@ -406,6 +406,12 @@ export default function StaffPage() {
                           <Shield size={13} className="text-green-400 mx-2" />
                         </span>
                       )}
+                      {p.qr_code && (
+                        <a href={`/${slug}/staff/${p.id}/badge`} target="_blank"
+                          className="flex items-center gap-1 text-xs text-gray-500 font-medium px-2.5 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+                          <Printer size={12} /> Badge
+                        </a>
+                      )}
 
                       {/* Edit — ONLY visible on own row */}
                       {isMe && (
