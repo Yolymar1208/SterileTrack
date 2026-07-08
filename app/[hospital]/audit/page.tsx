@@ -1,10 +1,11 @@
 'use client'
+import Link from 'next/link'
 
 import { useHospitalSlug } from '@/lib/hospital'
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase'
-import { History, Search, User, MapPin, Clock, Download, ChevronDown, ChevronRight, Package, Bell } from 'lucide-react'
+import { History, Search, User, MapPin, Clock, Download, ChevronDown, ChevronRight, Package, Bell, FileText} from "lucide-react"
 import { AuditLog, ACTION_LABELS } from '@/lib/types'
 import { format } from 'date-fns'
 
@@ -151,6 +152,11 @@ export default function AuditPage() {
               Permanent chain of custody — grouped by instrument set, includes alerts
             </p>
           </div>
+          <Link href={`/${slug}/reports`}
+            className="btn-secondary text-sm px-3 py-2"
+            style={{ display: 'flex', alignItems: 'center', gap: 6, textDecoration: 'none' }}>
+            <FileText size={14} /> Print Report
+          </Link>
           <button onClick={exportCSV} className="btn-secondary text-sm px-3 py-2">
             <Download size={14} /> Export CSV
           </button>
