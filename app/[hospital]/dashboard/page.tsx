@@ -167,7 +167,7 @@ export default function DashboardPage() {
       {/* Topbar */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 style={{ fontSize: 20, fontWeight: 500, color: '#0D1117', letterSpacing: '-0.4px' }}>
+          <h1 style={{ fontSize: 20, fontWeight: 500, color: 'var(--text-primary)', letterSpacing: '-0.4px' }}>
             {greeting}, {userName} {emoji}
           </h1>
           <p style={{ fontSize: 12, color: '#9CA3AF', marginTop: 2 }}>{format(new Date(), "EEEE, MMMM d, yyyy")}</p>
@@ -309,8 +309,8 @@ export default function DashboardPage() {
       {/* ── Stat cards ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10, marginBottom: 14 }}>
         {[
-          { label: 'Sterile ready',  val: animSterile,        sub: 'Storage shelf',  subColor: '#16A34A', numColor: '#0D1117', iconColor: '#16A34A', iconBg: 'rgba(22,163,74,0.07)',    href: `/${slug}/storage`, iconName: 'ti-check' },
-          { label: 'At OR now',      val: animDisp,      sub: null,              subColor: null,      numColor: '#0D1117', iconColor: '#2563EB', iconBg: 'rgba(37,99,235,0.07)',    href: null,       iconName: 'ti-package' },
+          { label: 'Sterile ready',  val: animSterile,        sub: 'Storage shelf',  subColor: '#16A34A', numColor: 'var(--text-primary)', iconColor: '#16A34A', iconBg: 'rgba(22,163,74,0.07)',    href: `/${slug}/storage`, iconName: 'ti-check' },
+          { label: 'At OR now',      val: animDisp,      sub: null,              subColor: null,      numColor: 'var(--text-primary)', iconColor: '#2563EB', iconBg: 'rgba(37,99,235,0.07)',    href: null,       iconName: 'ti-package' },
           { label: 'Item alerts',     val: animAlerts, sub: 'Needs attention', subColor: '#DC2626', numColor: '#DC2626', iconColor: '#DC2626', iconBg: 'rgba(220,38,38,0.08)',    href: `/${slug}/alerts`,  iconName: 'ti-alert-triangle' },
           { label: 'Expiring soon',  val: animExpiring,  sub: 'Within 7 days',  subColor: '#D97706', numColor: '#D97706', iconColor: '#D97706', iconBg: 'rgba(217,119,6,0.07)',    href: null,       iconName: 'ti-clock' },
         ].map(c => {
@@ -362,7 +362,7 @@ export default function DashboardPage() {
 
       {/* Recent activity */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-        <span style={{ fontSize: 13, fontWeight: 500, color: '#0D1117', letterSpacing: '-0.1px' }}>Recent Activity</span>
+        <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)', letterSpacing: '-0.1px' }}>Recent Activity</span>
         <Link href={`/${slug}/audit`}><span style={{ fontSize: 12, color: '#00C9D4', cursor: 'pointer' }}>Full audit trail →</span></Link>
       </div>
       <div className="card" style={{ overflow: 'hidden', background: '#FFFFFF', border: '0.5px solid #DCDFE4' }}>
@@ -378,7 +378,7 @@ export default function DashboardPage() {
             <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#00C9D4', marginTop: 6, flexShrink: 0 }} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 13 }}>
-                <span style={{ fontWeight: 500, color: '#0D1117' }}>{log.item_name}</span>
+                <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{log.item_name}</span>
                 <span style={{ color: '#D1D5DB', margin: '0 6px' }}>·</span>
                 <span style={{ color: '#00A9B8', fontSize: 12 }}>
                   {ACTION_LABELS[log.action] || log.action.replace(/_/g, ' ')}
@@ -405,7 +405,7 @@ export default function DashboardPage() {
           <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 360, overflow: 'hidden' }}>
             <div style={{ padding: '18px 20px', borderBottom: '0.5px solid #EAECF0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div>
-                <div style={{ fontSize: 15, fontWeight: 500, color: '#0D1117' }}>Upload Backup</div>
+                <div style={{ fontSize: 15, fontWeight: 500, color: 'var(--text-primary)' }}>Upload Backup</div>
                 <div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 1 }}>Password required</div>
               </div>
               <button onClick={() => setShowUploadModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF', padding: 4 }}>
