@@ -132,8 +132,9 @@ export default function HospitalLayout({ children }: { children: React.ReactNode
       styleTag.id = 'accent-override'
       document.head.appendChild(styleTag)
     }
+    // Generate shade variations from accent color
     const css = [
-      ':root { --brand: ' + accentColor + '; --brand-mid: ' + accentColor + '; }',
+      ':root { --brand: ' + accentColor + '; --brand-mid: ' + accentColor + '; --brand-50: ' + accentColor + '18; --brand-100: ' + accentColor + '28; --brand-200: ' + accentColor + '44; --brand-300: ' + accentColor + '88; --brand-400: ' + accentColor + 'cc; --brand-600: ' + accentColor + 'dd; --brand-700: ' + accentColor + 'bb; }',
 
       /* Tailwind brand classes */
       '.text-brand-500, .text-brand-400, .text-brand-300 { color: ' + accentColor + ' !important; }',
