@@ -350,7 +350,7 @@ export default function DashboardPage() {
               border: '0.5px solid #DCDFE4',
               padding: '10px 13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 9, transition: 'border-color 0.12s'
             }}
-              onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.borderColor = '#00C9D4'}
+              onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--brand)'}
               onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.borderColor = '#DCDFE4'}>
               <i className={`ti ${q.iconName}`} style={{ fontSize: 16, color: q.color }} aria-hidden="true" />
               <span style={{ fontSize: 12, fontWeight: 500, color: '#374151' }}>{q.label}</span>
@@ -363,7 +363,7 @@ export default function DashboardPage() {
       {/* Recent activity */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
         <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)', letterSpacing: '-0.1px' }}>Recent Activity</span>
-        <Link href={`/${slug}/audit`}><span style={{ fontSize: 12, color: '#00C9D4', cursor: 'pointer' }}>Full audit trail →</span></Link>
+        <Link href={`/${slug}/audit`}><span style={{ fontSize: 12, color: 'var(--brand)', cursor: 'pointer' }}>Full audit trail →</span></Link>
       </div>
       <div className="card" style={{ overflow: 'hidden', background: '#FFFFFF', border: '0.5px solid #DCDFE4' }}>
         {loading ? (
@@ -375,12 +375,12 @@ export default function DashboardPage() {
             display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 16px',
             borderBottom: i < recentAudit.length - 1 ? '0.5px solid #F3F4F6' : 'none'
           }}>
-            <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#00C9D4', marginTop: 6, flexShrink: 0 }} />
+            <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--brand)', marginTop: 6, flexShrink: 0 }} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 13 }}>
                 <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{log.item_name}</span>
                 <span style={{ color: '#D1D5DB', margin: '0 6px' }}>·</span>
-                <span style={{ color: '#00A9B8', fontSize: 12 }}>
+                <span style={{ color: 'var(--brand)', fontSize: 12 }}>
                   {ACTION_LABELS[log.action] || log.action.replace(/_/g, ' ')}
                 </span>
               </div>
