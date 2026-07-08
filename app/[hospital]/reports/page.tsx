@@ -183,7 +183,7 @@ export default function ReportsPage() {
   return (
     <div>
       {/* Controls - hidden on print */}
-      <div className="print:hidden p-4 md:p-6 max-w-3xl mx-auto">
+      <div className="print-hidden p-4 md:p-6 max-w-3xl mx-auto">
         <Link href={`/${slug}/dashboard`} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 mb-4">
           <ArrowLeft size={15} /> Back to Dashboard
         </Link>
@@ -256,7 +256,7 @@ export default function ReportsPage() {
 
       {/* PRINTABLE REPORT */}
       {report && (
-        <div ref={printRef} style={{
+        <div id="report-content" ref={printRef} style={{
           maxWidth: 760, margin: '0 auto', padding: '32px 40px',
           fontFamily: 'Arial, sans-serif', color: '#0A0F1E',
           background: '#fff',
@@ -445,9 +445,14 @@ export default function ReportsPage() {
       {/* Print styles */}
       <style>{`
         @media print {
-          .print\\:hidden { display: none !important; }
-          body { margin: 0; padding: 0; }
-          @page { margin: 0.5in; size: A4; }
+          .print-hidden { display: none !important; }
+          body > div > div { display: none !important; }
+          #report-content { display: block !important; position: fixed !important; top: 0 !important; left: 0 !important; width: 100% !important; z-index: 9999 !important; background: white !important; }
+          body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+          @page { margin: 0.5in; size: A4 portrait; }
+          table { page-break-inside: auto; width: 100%; }
+          tr { page-break-inside: avoid; }
+          thead { display: table-header-group; }
         }
       `}</style>
     </div>
