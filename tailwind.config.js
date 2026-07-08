@@ -9,30 +9,17 @@ module.exports = {
     extend: {
       colors: {
         brand: {
-          50:  '#E0FAFB',
-          100: '#B3F2F5',
-          200: '#7DE8ED',
-          300: '#3DD9E0',
-          400: '#00C9D4',
-          500: '#00B8C2',
-          600: '#0099A8',
-          700: '#007A88',
-          800: '#005C68',
-          900: '#0A0F1E',
-        }
-      },
-      fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
-      },
-      borderWidth: {
-        '0.5': '0.5px',
-      },
-      fontSize: {
-        '2xs': '10px',
-      },
-      letterSpacing: {
-        tight: '-0.3px',
-        tighter: '-0.5px',
+          50:  'var(--brand-50,  #E0FAFB)',
+          100: 'var(--brand-100, #B3F2F5)',
+          200: 'var(--brand-200, #7DE8ED)',
+          300: 'var(--brand-300, #3DD9E0)',
+          400: 'var(--brand-400, #00C9D4)',
+          500: 'var(--brand,     #00C9D4)',
+          600: 'var(--brand-mid, #00B8C2)',
+          700: 'var(--brand-700, #0099A8)',
+          800: 'var(--brand-800, #007A88)',
+          900: 'var(--brand-900, #0A0F1E)',
+        },
       },
     },
   },
