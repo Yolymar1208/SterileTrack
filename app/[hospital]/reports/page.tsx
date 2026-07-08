@@ -173,7 +173,32 @@ export default function ReportsPage() {
   }
 
   function handlePrint() {
-    window.print()
+    if (!printRef.current) return
+    const html = printRef.current.innerHTML
+    const win = window.open('', '_blank', 'width=900,height=700')
+    if (!win) return
+    win.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>CSSD Activity Report</title>
+          <style>
+            * { box-sizing: border-box; margin: 0; padding: 0; }
+            body { font-family: Arial, sans-serif; color: #0A0F1E; background: white; padding: 40px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            @page { margin: 0.5in; size: A4 portrait; }
+            table { width: 100%; border-collapse: collapse; }
+            thead { display: table-header-group; }
+            tr { page-break-inside: avoid; }
+          </style>
+        </head>
+        <body>
+          ${html}
+        </body>
+      </html>
+    `)
+    win.document.close()
+    win.focus()
+    setTimeout(() => { win.print(); win.close() }, 500)
   }
 
   function formatDate(d: string) {
@@ -446,10 +471,8 @@ export default function ReportsPage() {
       <style>{`
         @media print {
           .print-hidden { display: none !important; }
-          body > div > div { display: none !important; }
-          #report-content { display: block !important; position: fixed !important; top: 0 !important; left: 0 !important; width: 100% !important; z-index: 9999 !important; background: white !important; }
-          body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
           @page { margin: 0.5in; size: A4 portrait; }
+          body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
           table { page-break-inside: auto; width: 100%; }
           tr { page-break-inside: avoid; }
           thead { display: table-header-group; }
