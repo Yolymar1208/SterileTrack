@@ -555,7 +555,7 @@ export default function LandingPage() {
                   ))}
                 </div>
 
-                <a href="mailto:yolymarorfiano@yahoo.com?subject=SterileTrack - " + plan.name + " Plan Inquiry"
+                <a href=`mailto:yolymarorfiano@yahoo.com?subject=SterileTrack - ${plan.name} Plan Inquiry`
                   style={{
                     display: 'block', textAlign: 'center',
                     padding: '10px 0', borderRadius: 9, fontSize: 13, fontWeight: 600,
