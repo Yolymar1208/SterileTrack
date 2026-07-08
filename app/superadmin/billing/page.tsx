@@ -1,274 +1,322 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import Link from 'next/link'
 import { createClient } from '@/lib/supabase'
 import {
-  Building2, Users, Package, AlertTriangle,
-  CheckCircle, Clock, XCircle, Plus, ChevronRight,
-  TrendingUp, Shield, History, CreditCard, Activity
+  CreditCard, Plus, Check, ChevronDown,
+  ChevronUp, Building2, ArrowLeft, X
 } from 'lucide-react'
+import Link from 'next/link'
 
-const STATUS_STYLE: Record<string, { label: string; color: string; bg: string }> = {
-  active:    { label: 'Active',    color: '#276749', bg: '#C6F6D5' },
-  trial:     { label: 'Trial',     color: '#975A16', bg: '#FEFCBF' },
-  inactive:  { label: 'Inactive',  color: '#9B2C2C', bg: '#FED7D7' },
-  suspended: { label: 'Suspended', color: '#744210', bg: '#FEEBC8' },
+type Payment = {
+  id: string
+  hospital_id: string
+  amount: number
+  plan_name: string | null
+  period: string | null
+  notes: string | null
+  recorded_by: string | null
+  paid_at: string
 }
 
-type GlobalStats = {
-  totalHospitals: number
-  activeHospitals: number
-  trialHospitals: number
-  inactiveHospitals: number
-  totalStaff: number
-  totalSets: number
-  totalAuditLogs: number
-  totalAlerts: number
-  mrr: number
-  arr: number
+type Hospital = {
+  id: string
+  name: string
+  slug: string
+  logo_url: string | null
+  status: string
+  plan: { name: string; price_monthly: number } | null
+  payments: Payment[]
+  lastPaid: string | null
+  totalPaid: number
 }
 
-export default function SuperadminPage() {
+export default function BillingPage() {
   const supabase = createClient()
-  const [hospitals, setHospitals] = useState<any[]>([])
-  const [stats, setStats]         = useState<GlobalStats | null>(null)
-  const [loading, setLoading]     = useState(true)
-  const [debugMsg, setDebugMsg]   = useState('')
+  const [hospitals, setHospitals]     = useState<Hospital[]>([])
+  const [loading, setLoading]         = useState(true)
+  const [expanded, setExpanded]       = useState<string | null>(null)
+  const [showModal, setShowModal]     = useState(false)
+  const [modalHospital, setModalHospital] = useState<Hospital | null>(null)
+  const [saving, setSaving]           = useState(false)
+  const [msg, setMsg]                 = useState('')
+
+  const [form, setForm] = useState({
+    amount: '',
+    period: '',
+    notes: '',
+  })
+
+  const now = new Date()
+  const currentPeriod = `${now.toLocaleString('default', { month: 'long' })} ${now.getFullYear()}`
 
   useEffect(() => { load() }, [])
 
   async function load() {
     setLoading(true)
 
-    const { data: hosps, error } = await supabase
+    const { data: hosps } = await supabase
       .from('hospitals')
-      .select('*')
-      .order('created_at', { ascending: false })
-
-    if (error) { setDebugMsg('Error: ' + error.message); setLoading(false); return }
-    if (!hosps || hosps.length === 0) { setDebugMsg('No hospitals returned'); setLoading(false); return }
+      .select('*, plan:plans(name, price_monthly)')
+      .order('name')
 
     const { data: plans } = await supabase.from('plans').select('*')
     const planMap = Object.fromEntries((plans || []).map((p: any) => [p.id, p]))
 
-    // Global counts
-    const [
-      { count: totalStaff },
-      { count: totalSets },
-      { count: totalAuditLogs },
-      { count: totalAlerts },
-    ] = await Promise.all([
-      supabase.from('profiles').select('id', { count: 'exact', head: true }),
-      supabase.from('inventory_items').select('id', { count: 'exact', head: true }).eq('item_type', 'instrument_set'),
-      supabase.from('audit_logs').select('id', { count: 'exact', head: true }),
-      supabase.from('alerts').select('id', { count: 'exact', head: true }).eq('is_resolved', false),
-    ])
+    const { data: allPayments } = await supabase
+      .from('payments')
+      .select('*')
+      .order('paid_at', { ascending: false })
 
-    const enriched = await Promise.all(hosps.map(async (h: any) => {
-      const [
-        { count: staff_count },
-        { count: set_count },
-        { count: alert_count },
-      ] = await Promise.all([
-        supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('hospital_id', h.id),
-        supabase.from('inventory_items').select('id', { count: 'exact', head: true }).eq('hospital_id', h.id),
-        supabase.from('alerts').select('id', { count: 'exact', head: true }).eq('hospital_id', h.id).eq('is_resolved', false),
-      ])
-      return { ...h, plan: planMap[h.plan_id] || null, staff_count: staff_count || 0, set_count: set_count || 0, alert_count: alert_count || 0 }
-    }))
-
-    const activeHosps = enriched.filter(h => h.status === 'active')
-    const mrr = activeHosps.reduce((sum, h) => sum + (h.plan?.price_monthly || 0), 0)
-
-    setStats({
-      totalHospitals:   enriched.length,
-      activeHospitals:  activeHosps.length,
-      trialHospitals:   enriched.filter(h => h.status === 'trial').length,
-      inactiveHospitals: enriched.filter(h => h.status === 'inactive' || h.status === 'suspended').length,
-      totalStaff:       totalStaff || 0,
-      totalSets:        totalSets || 0,
-      totalAuditLogs:   totalAuditLogs || 0,
-      totalAlerts:      totalAlerts || 0,
-      mrr,
-      arr: mrr * 12,
+    const enriched: Hospital[] = (hosps || []).map((h: any) => {
+      const hPayments = (allPayments || []).filter((p: Payment) => p.hospital_id === h.id)
+      const totalPaid = hPayments.reduce((sum, p) => sum + p.amount, 0)
+      const lastPaid  = hPayments.length > 0 ? hPayments[0].paid_at : null
+      return {
+        ...h,
+        plan: planMap[h.plan_id] || null,
+        payments: hPayments,
+        totalPaid,
+        lastPaid,
+      }
     })
 
     setHospitals(enriched)
-    setDebugMsg('')
     setLoading(false)
   }
 
-  return (
-    <div className="p-4 md:p-6 max-w-5xl mx-auto">
+  function openPayment(h: Hospital) {
+    setModalHospital(h)
+    setForm({
+      amount: h.plan?.price_monthly?.toString() || '',
+      period: currentPeriod,
+      notes: '',
+    })
+    setShowModal(true)
+    setMsg('')
+  }
 
-      {/* Header */}
-      <div className="mb-6 flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-gray-800 flex items-center gap-2">
-            <Shield size={22} className="text-brand-500" /> Superadmin Overview
-          </h1>
-          <p className="text-sm text-gray-500 mt-1">Manage all SterileTrack hospital accounts</p>
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          <Link href="/superadmin/billing"
-            className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium border border-gray-200 text-gray-600 hover:bg-gray-50">
-            <CreditCard size={15} /> Billing
-          </Link>
-          <Link href="/superadmin/hospitals/new"
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium text-white"
-            style={{ background: 'linear-gradient(135deg, #00C9D4, #0088A9)' }}>
-            <Plus size={15} /> New Hospital
-          </Link>
-        </div>
+  async function handleSavePayment() {
+    if (!modalHospital || !form.amount) return
+    setSaving(true)
+
+    const { data: { user } } = await supabase.auth.getUser()
+    const { data: profile }  = await supabase.from('profiles').select('full_name').eq('id', user?.id).single()
+
+    const { error } = await supabase.from('payments').insert({
+      hospital_id:  modalHospital.id,
+      amount:       parseInt(form.amount),
+      plan_name:    modalHospital.plan?.name || null,
+      period:       form.period,
+      notes:        form.notes || null,
+      recorded_by:  profile?.full_name || 'Admin',
+      paid_at:      new Date().toISOString(),
+    })
+
+    if (error) { setMsg('Error: ' + error.message) }
+    else {
+      setShowModal(false)
+      setMsg('')
+      load()
+    }
+    setSaving(false)
+  }
+
+  async function deletePayment(id: string) {
+    await supabase.from('payments').delete().eq('id', id)
+    load()
+  }
+
+  const totalMRR     = hospitals.filter(h => h.status === 'active').reduce((s, h) => s + (h.plan?.price_monthly || 0), 0)
+  const totalCollected = hospitals.reduce((s, h) => s + h.totalPaid, 0)
+  const paidThisMonth  = hospitals.filter(h => h.payments.some(p => p.period === currentPeriod)).length
+  const unpaidThisMonth = hospitals.filter(h => h.status === 'active' && (h.plan?.price_monthly || 0) > 0 && !h.payments.some(p => p.period === currentPeriod)).length
+
+  const inputStyle = {
+    width: '100%', padding: '9px 12px', borderRadius: 8, fontSize: 13,
+    border: '1px solid #E5E7EB', outline: 'none', background: '#F9FAFB', color: '#0D1117',
+  }
+
+  return (
+    <div className="p-4 md:p-6 max-w-4xl mx-auto">
+      <Link href="/superadmin" className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 mb-4">
+        <ArrowLeft size={15} /> Back to Overview
+      </Link>
+
+      <div className="mb-6">
+        <h1 className="text-xl font-semibold text-gray-800 flex items-center gap-2">
+          <CreditCard size={22} className="text-brand-500" /> Billing Tracker
+        </h1>
+        <p className="text-sm text-gray-500 mt-1">Track manual payments from hospital accounts</p>
       </div>
 
-      {debugMsg && (
-        <div className="mb-4 p-3 rounded-xl text-sm bg-red-50 text-red-700 border border-red-200">{debugMsg}</div>
-      )}
-
-      {/* Global stats — 2 rows */}
-      {stats && (
-        <>
-          {/* Row 1 — Hospital counts */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
-            {[
-              { label: 'Total Hospitals', value: stats.totalHospitals,   icon: Building2,   color: '#00C9D4' },
-              { label: 'Active',          value: stats.activeHospitals,   icon: CheckCircle, color: '#38A169' },
-              { label: 'On Trial',        value: stats.trialHospitals,    icon: Clock,       color: '#D69E2E' },
-              { label: 'Inactive',        value: stats.inactiveHospitals, icon: XCircle,     color: '#E53E3E' },
-            ].map(tile => (
-              <div key={tile.label} className="card p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs text-gray-500 font-medium">{tile.label}</span>
-                  <tile.icon size={15} style={{ color: tile.color }} />
-                </div>
-                <div className="text-2xl font-semibold text-gray-800">{tile.value}</div>
-              </div>
-            ))}
+      {/* Summary */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        {[
+          { label: 'Monthly MRR',        value: `₱${totalMRR.toLocaleString()}`,        color: '#00C9D4' },
+          { label: 'Total Collected',    value: `₱${totalCollected.toLocaleString()}`,   color: '#38A169' },
+          { label: `Paid (${now.toLocaleString('default', { month: 'short' })})`, value: paidThisMonth,   color: '#2B6CB0' },
+          { label: 'Unpaid This Month',  value: unpaidThisMonth, color: '#E53E3E' },
+        ].map(tile => (
+          <div key={tile.label} className="card p-4">
+            <div className="text-xs text-gray-500 font-medium mb-1">{tile.label}</div>
+            <div className="text-xl font-semibold" style={{ color: tile.color }}>{tile.value}</div>
           </div>
+        ))}
+      </div>
 
-          {/* Row 2 — System-wide stats */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-            {[
-              { label: 'Total Staff',     value: stats.totalStaff.toLocaleString(),     icon: Users,         color: '#805AD5' },
-              { label: 'Total Sets',      value: stats.totalSets.toLocaleString(),      icon: Package,       color: '#2B6CB0' },
-              { label: 'Audit Logs',      value: stats.totalAuditLogs.toLocaleString(), icon: History,       color: '#00B8C2' },
-              { label: 'Open Alerts',     value: stats.totalAlerts.toLocaleString(),    icon: AlertTriangle, color: '#E53E3E' },
-            ].map(tile => (
-              <div key={tile.label} className="card p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs text-gray-500 font-medium">{tile.label}</span>
-                  <tile.icon size={15} style={{ color: tile.color }} />
-                </div>
-                <div className="text-2xl font-semibold text-gray-800">{tile.value}</div>
-              </div>
-            ))}
-          </div>
-
-          {/* Revenue summary */}
-          <div className="card p-4 mb-6" style={{ background: 'linear-gradient(135deg, #0A0F1E, #0D2030)', border: 'none' }}>
-            <div className="flex items-center justify-between flex-wrap gap-4">
-              <div className="flex items-center gap-3">
-                <div style={{ width: 40, height: 40, borderRadius: 10, background: 'rgba(0,201,212,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <TrendingUp size={20} color="#00C9D4" />
-                </div>
-                <div>
-                  <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Monthly Recurring Revenue</div>
-                  <div style={{ color: '#fff', fontSize: 28, fontWeight: 700, letterSpacing: '-1px' }}>₱{stats.mrr.toLocaleString()}</div>
-                </div>
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11 }}>Projected Annual</div>
-                <div style={{ color: '#00C9D4', fontSize: 20, fontWeight: 700 }}>₱{stats.arr.toLocaleString()}</div>
-                <Link href="/superadmin/billing"
-                  style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4, marginTop: 4, justifyContent: 'flex-end' }}>
-                  View billing <ChevronRight size={12} />
-                </Link>
-              </div>
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* Hospitals list */}
+      {/* Hospital billing list */}
       <div className="card divide-y divide-gray-50">
-        <div className="px-4 py-3 flex items-center justify-between">
-          <h2 className="font-medium text-gray-800 text-sm">All Hospitals</h2>
-          <span className="text-xs text-gray-400">{hospitals.length} total</span>
+        <div className="px-4 py-3">
+          <h2 className="font-medium text-gray-800 text-sm">Payment Status — {currentPeriod}</h2>
         </div>
 
         {loading ? (
           <div className="p-8 text-center text-gray-400">Loading…</div>
-        ) : hospitals.length === 0 ? (
-          <div className="p-8 text-center">
-            <Building2 size={32} className="text-gray-200 mx-auto mb-3" />
-            <p className="text-sm text-gray-500">No hospitals yet.</p>
-            <Link href="/superadmin/hospitals/new" className="text-sm text-brand-500 font-medium mt-2 inline-block">
-              Add your first hospital →
-            </Link>
-          </div>
         ) : hospitals.map(h => {
-          const s = STATUS_STYLE[h.status] || STATUS_STYLE.inactive
-          const isTrialExpired = h.status === 'trial' && h.trial_ends_at && new Date(h.trial_ends_at) < new Date()
-          const daysLeft = h.trial_ends_at
-            ? Math.max(0, Math.ceil((new Date(h.trial_ends_at).getTime() - Date.now()) / 86400000))
-            : null
+          const paidThisPeriod = h.payments.some(p => p.period === currentPeriod)
+          const isPaying       = (h.plan?.price_monthly || 0) > 0 && h.status === 'active'
+          const isExpanded     = expanded === h.id
 
           return (
-            <Link key={h.id} href={`/superadmin/hospitals/${h.id}`}>
-              <div className="px-4 py-3 hover:bg-gray-50 transition-colors flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 overflow-hidden"
+            <div key={h.id}>
+              <div className="px-4 py-3 flex items-center gap-3">
+                {/* Logo */}
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 overflow-hidden"
                   style={{ background: h.logo_url ? '#fff' : 'linear-gradient(135deg, #E0FAFB, #B3F2F5)', border: h.logo_url ? '1px solid #E5E7EB' : 'none' }}>
                   {h.logo_url
-                    ? <img src={h.logo_url} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 2 }} />
-                    : <Building2 size={18} style={{ color: '#00B8C2' }} />
+                    ? <img src={h.logo_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 2 }} />
+                    : <Building2 size={16} style={{ color: '#00B8C2' }} />
                   }
                 </div>
 
+                {/* Info */}
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm font-medium text-gray-800 truncate">{h.name}</span>
-                    <span className="text-xs font-mono text-gray-400">/{h.slug}</span>
-                  </div>
-                  <div className="flex items-center gap-3 mt-0.5 flex-wrap">
-                    <span className="text-xs text-gray-400 flex items-center gap-1">
-                      <Users size={11} /> {h.staff_count}
-                    </span>
-                    <span className="text-xs text-gray-400 flex items-center gap-1">
-                      <Package size={11} /> {h.set_count}
-                    </span>
-                    {h.alert_count > 0 && (
-                      <span className="text-xs flex items-center gap-1" style={{ color: '#E53E3E' }}>
-                        <AlertTriangle size={11} /> {h.alert_count}
-                      </span>
-                    )}
-                    {h.plan && (
-                      <span className="text-xs text-gray-400">
-                        {h.plan.name} {h.plan.price_monthly > 0 ? `· ₱${h.plan.price_monthly.toLocaleString()}/mo` : '· Free'}
-                      </span>
-                    )}
-                    {h.status === 'trial' && daysLeft !== null && !isTrialExpired && (
-                      <span className="text-xs" style={{ color: '#D69E2E' }}>{daysLeft}d left</span>
-                    )}
-                    {isTrialExpired && (
-                      <span className="text-xs font-medium" style={{ color: '#E53E3E' }}>Trial expired</span>
-                    )}
+                  <div className="text-sm font-medium text-gray-800 truncate">{h.name}</div>
+                  <div className="text-xs text-gray-400 mt-0.5 flex items-center gap-2">
+                    <span>{h.plan?.name || 'No plan'}</span>
+                    {isPaying && <span>· ₱{h.plan?.price_monthly?.toLocaleString()}/mo</span>}
+                    {h.lastPaid && <span>· Last paid: {new Date(h.lastPaid).toLocaleDateString('en-PH', { dateStyle: 'medium' })}</span>}
+                    {h.totalPaid > 0 && <span>· Total: ₱{h.totalPaid.toLocaleString()}</span>}
                   </div>
                 </div>
 
+                {/* Status + actions */}
                 <div className="flex items-center gap-2 flex-shrink-0">
-                  <span className="text-xs font-medium px-2 py-0.5 rounded-full"
-                    style={{ color: s.color, background: s.bg }}>
-                    {isTrialExpired ? 'Expired' : s.label}
-                  </span>
-                  <ChevronRight size={15} className="text-gray-300" />
+                  {isPaying && (
+                    paidThisPeriod ? (
+                      <span className="flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full"
+                        style={{ background: '#C6F6D5', color: '#276749' }}>
+                        <Check size={11} /> Paid
+                      </span>
+                    ) : (
+                      <span className="text-xs font-medium px-2 py-1 rounded-full"
+                        style={{ background: '#FEE2E2', color: '#B91C1C' }}>
+                        Unpaid
+                      </span>
+                    )
+                  )}
+                  {!isPaying && (
+                    <span className="text-xs text-gray-400 px-2 py-1 rounded-full bg-gray-100">Free</span>
+                  )}
+                  {isPaying && !paidThisPeriod && (
+                    <button onClick={() => openPayment(h)}
+                      className="flex items-center gap-1 text-xs font-medium px-3 py-1.5 rounded-lg text-white"
+                      style={{ background: 'linear-gradient(135deg, #00C9D4, #0088A9)' }}>
+                      <Plus size={11} /> Log Payment
+                    </button>
+                  )}
+                  {isPaying && paidThisPeriod && (
+                    <button onClick={() => openPayment(h)}
+                      className="text-xs text-brand-500 font-medium px-2 py-1 rounded-lg hover:bg-brand-50">
+                      + Add
+                    </button>
+                  )}
+                  {h.payments.length > 0 && (
+                    <button onClick={() => setExpanded(isExpanded ? null : h.id)}
+                      className="text-gray-400 hover:text-gray-600 p-1">
+                      {isExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+                    </button>
+                  )}
                 </div>
               </div>
-            </Link>
+
+              {/* Payment history */}
+              {isExpanded && h.payments.length > 0 && (
+                <div className="px-4 pb-3 bg-gray-50">
+                  <div className="text-xs font-medium text-gray-500 mb-2 pt-2">Payment History</div>
+                  <div className="space-y-1.5">
+                    {h.payments.map(p => (
+                      <div key={p.id} className="flex items-center gap-3 text-xs bg-white rounded-lg px-3 py-2 border border-gray-100">
+                        <div className="flex-1">
+                          <span className="font-semibold text-gray-700">₱{p.amount.toLocaleString()}</span>
+                          {p.period && <span className="text-gray-400 ml-2">{p.period}</span>}
+                          {p.notes && <span className="text-gray-400 ml-2">· {p.notes}</span>}
+                        </div>
+                        <div className="text-gray-400">
+                          {new Date(p.paid_at).toLocaleDateString('en-PH', { dateStyle: 'short' })}
+                        </div>
+                        {p.recorded_by && <div className="text-gray-400">by {p.recorded_by}</div>}
+                        <button onClick={() => deletePayment(p.id)}
+                          className="text-red-400 hover:text-red-600 p-0.5">
+                          <X size={13} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           )
         })}
       </div>
+
+      {/* Log Payment Modal */}
+      {showModal && modalHospital && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-sm shadow-xl overflow-hidden">
+            <div className="p-5 border-b border-gray-100 flex items-center justify-between">
+              <div>
+                <h2 className="font-semibold text-gray-800">Log Payment</h2>
+                <p className="text-xs text-gray-500 mt-0.5">{modalHospital.name}</p>
+              </div>
+              <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-gray-600">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="p-5 space-y-3">
+              {msg && <div className="text-sm text-red-600 bg-red-50 p-2 rounded-lg">{msg}</div>}
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">Amount (₱) *</label>
+                <input style={inputStyle} type="number" value={form.amount}
+                  onChange={e => setForm(f => ({ ...f, amount: e.target.value }))}
+                  placeholder="e.g. 3500" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">Period *</label>
+                <input style={inputStyle} value={form.period}
+                  onChange={e => setForm(f => ({ ...f, period: e.target.value }))}
+                  placeholder="e.g. July 2026" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">Notes</label>
+                <input style={inputStyle} value={form.notes}
+                  onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+                  placeholder="Optional — payment method, reference, etc." />
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button onClick={() => setShowModal(false)}
+                  className="btn-secondary flex-1 justify-center text-sm">Cancel</button>
+                <button onClick={handleSavePayment} disabled={!form.amount || saving}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white flex items-center justify-center gap-2"
+                  style={{ background: form.amount && !saving ? 'linear-gradient(135deg, #00C9D4, #0088A9)' : '#9CA3AF', cursor: !form.amount || saving ? 'not-allowed' : 'pointer' }}>
+                  {saving ? 'Saving…' : <><Check size={14} /> Log Payment</>}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
