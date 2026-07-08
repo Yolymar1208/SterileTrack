@@ -121,10 +121,28 @@ export default function HospitalLayout({ children }: { children: React.ReactNode
     load()
   }, [pathname])
 
-  // Apply accent color as CSS variable
+  // Apply accent color as CSS variable globally
   useEffect(() => {
     document.documentElement.style.setProperty('--brand', accentColor)
     document.documentElement.style.setProperty('--brand-mid', accentColor)
+    document.documentElement.style.setProperty('--brand-500', accentColor)
+    // Also inject a style tag for inline style overrides
+    let styleTag = document.getElementById('accent-override')
+    if (!styleTag) {
+      styleTag = document.createElement('style')
+      styleTag.id = 'accent-override'
+      document.head.appendChild(styleTag)
+    }
+    styleTag.innerHTML = \`
+      :root { --brand: \${accentColor}; --brand-mid: \${accentColor}; }
+      .text-brand-500, .text-brand-400, .text-brand-300 { color: \${accentColor} !important; }
+      .bg-brand-50 { background: \${accentColor}18 !important; }
+      .btn-primary { background: \${accentColor} !important; }
+      .btn-primary:hover { background: \${accentColor}dd !important; }
+      [style*="#00C9D4"] { color: \${accentColor} !important; }
+      [style*="#00B8C2"] { color: \${accentColor} !important; }
+      [style*="00C9D4"] { border-color: \${accentColor} !important; }
+    \`
   }, [accentColor])
 
   async function handleLogout() {
@@ -160,7 +178,7 @@ export default function HospitalLayout({ children }: { children: React.ReactNode
               const active = pathname === item.href || pathname.startsWith(item.href + '/')
               return (
                 <Link key={item.href} href={item.href} onClick={() => setSidebarOpen(false)}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 8, marginBottom: 1, fontSize: 13, cursor: 'pointer', transition: 'all 0.12s', color: active ? '#00C9D4' : 'rgba(255,255,255,0.5)', background: active ? 'rgba(0,201,212,0.1)' : 'transparent' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 8, marginBottom: 1, fontSize: 13, cursor: 'pointer', transition: 'all 0.12s', color: active ? accentColor : 'rgba(255,255,255,0.5)', background: active ? `${accentColor}22` : 'transparent' }}>
                     <item.icon size={16} style={{ flexShrink: 0 }} />
                     <span style={{ flex: 1 }}>{item.label}</span>
                     {item.badge === 'or' && orPendingCount > 0 && (
@@ -169,7 +187,7 @@ export default function HospitalLayout({ children }: { children: React.ReactNode
                     {item.badge === 'alert' && alertCount > 0 && (
                       <span style={{ minWidth: 18, height: 18, background: '#E83A3A', color: '#fff', fontSize: 10, fontWeight: 600, borderRadius: 9, padding: '0 5px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{alertCount}</span>
                     )}
-                    {active && <ChevronRight size={12} style={{ color: '#00C9D4' }} />}
+                    {active && <ChevronRight size={12} style={{ color: accentColor }} />}
                   </div>
                 </Link>
               )
@@ -304,7 +322,7 @@ export default function HospitalLayout({ children }: { children: React.ReactNode
                       <div style={{
                         position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)',
                         width: 32, height: 2, borderRadius: 2,
-                        background: 'linear-gradient(90deg, #00C9D4, #0088A9)',
+                        background: `linear-gradient(90deg, ${accentColor}, ${accentColor})`,
                       }} />
                     )}
 
@@ -312,7 +330,7 @@ export default function HospitalLayout({ children }: { children: React.ReactNode
                     <div style={{ position: 'relative', marginBottom: 4 }}>
                       <item.icon
                         size={22}
-                        style={{ color: active ? '#00C9D4' : 'rgba(255,255,255,0.35)' }}
+                        style={{ color: active ? accentColor : 'rgba(255,255,255,0.35)' }}
                       />
                       {badgeCount > 0 && (
                         <div style={{
