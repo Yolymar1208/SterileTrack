@@ -142,7 +142,7 @@ export default function LandingPage() {
   ]
 
   return (
-    <div style={{ fontFamily: "'Inter', -apple-system, sans-serif", color: '#0A0F1E' }}>
+    <div style={{ fontFamily: "Inter, -apple-system, sans-serif", color: '#0A0F1E' }}>
 
       {/* ── NAV ─────────────────────────────────────────── */}
       <nav style={{
