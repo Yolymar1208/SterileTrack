@@ -62,7 +62,7 @@ function SuspendedContent() {
       </div>
 
       <button
-        onClick={() => window.location.href = '/'}
+        onClick={() => window.location.href = '/login'}
         style={{
           background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.1)',
           color: 'rgba(255,255,255,0.5)', fontSize: 13, borderRadius: 9,
