@@ -1,10 +1,11 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { createClient } from '@/lib/supabase'
 import {
   Shield, QrCode, Bell, ClipboardCheck,
   ArrowRight, CheckCircle, ChevronDown,
-  Package, History, Users, Menu, X
+  Package, History, Users, Menu, X, Eye, EyeOff
 } from 'lucide-react'
 
 const features = [
@@ -29,6 +30,112 @@ const plans = [
   { name: 'Enterprise', price: '₱8,000', sub: 'per month', features: ['Everything in Professional', 'Multi-department support', 'Custom onboarding', 'Dedicated account manager', 'SLA guarantee'], cta: 'Contact us', highlight: false },
 ]
 
+function LoginCard() {
+  const [email, setEmail]       = useState('')
+  const [password, setPassword] = useState('')
+  const [showPw, setShowPw]     = useState(false)
+  const [loading, setLoading]   = useState(false)
+  const [error, setError]       = useState('')
+  const supabase = createClient()
+
+  async function handleLogin(e: React.FormEvent) {
+    e.preventDefault()
+    setLoading(true); setError('')
+    try {
+      const { error: authError } = await supabase.auth.signInWithPassword({ email, password })
+      if (authError) { setError(authError.message); setLoading(false); return }
+
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) { setError('Could not get user after login.'); setLoading(false); return }
+
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles').select('role, hospital_id').eq('id', user.id).single()
+      if (profileError) { setError('Profile error: ' + profileError.message); setLoading(false); return }
+      if (!profile) { setError('No profile found for this account.'); setLoading(false); return }
+
+      if (profile.role === 'system_admin') { window.location.href = '/superadmin'; return }
+
+      if (!profile.hospital_id) { setError('Your account is not linked to a hospital.'); setLoading(false); return }
+
+      const { data: hospital, error: hospitalError } = await supabase
+        .from('hospitals').select('slug').eq('id', profile.hospital_id).single()
+      if (hospitalError) { setError('Hospital error: ' + hospitalError.message); setLoading(false); return }
+      if (!hospital?.slug) { setError('Hospital not found.'); setLoading(false); return }
+
+      window.location.href = `/${hospital.slug}/dashboard`
+    } catch (err: any) {
+      setError('Unexpected error: ' + err.message)
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div style={{
+      background: '#fff', borderRadius: 20, padding: '36px 32px',
+      boxShadow: '0 24px 64px rgba(0,0,0,0.3)',
+      width: '100%', maxWidth: 380,
+    }}>
+      {/* Logo */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 28 }}>
+        <div style={{ width: 36, height: 36, borderRadius: 10, background: 'linear-gradient(135deg, #00C9D4, #0088A9)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Shield size={18} color="white" />
+        </div>
+        <div>
+          <div style={{ fontWeight: 600, fontSize: 15, color: '#0A0F1E', letterSpacing: '-0.3px' }}>SterileTrack</div>
+          <div style={{ fontSize: 11, color: '#9CA3AF' }}>CSSD Management</div>
+        </div>
+      </div>
+
+      <h2 style={{ fontSize: 20, fontWeight: 600, color: '#0A0F1E', marginBottom: 4, letterSpacing: '-0.4px' }}>
+        Welcome back
+      </h2>
+      <p style={{ fontSize: 13, color: '#9CA3AF', marginBottom: 24 }}>Sign in to your hospital account</p>
+
+      {error && (
+        <div style={{ background: '#FEE2E2', border: '0.5px solid #FCA5A5', color: '#B91C1C', fontSize: 13, borderRadius: 8, padding: '10px 12px', marginBottom: 16 }}>
+          {error}
+        </div>
+      )}
+
+      <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div>
+          <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: '#374151', marginBottom: 6 }}>Email</label>
+          <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+            placeholder="you@hospital.com" required
+            style={{ width: '100%', padding: '10px 12px', borderRadius: 9, border: '1px solid #E5E7EB', fontSize: 14, outline: 'none', color: '#111827', boxSizing: 'border-box' }} />
+        </div>
+
+        <div>
+          <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: '#374151', marginBottom: 6 }}>Password</label>
+          <div style={{ position: 'relative' }}>
+            <input type={showPw ? 'text' : 'password'} value={password}
+              onChange={e => setPassword(e.target.value)}
+              placeholder="••••••••" required
+              style={{ width: '100%', padding: '10px 40px 10px 12px', borderRadius: 9, border: '1px solid #E5E7EB', fontSize: 14, outline: 'none', color: '#111827', boxSizing: 'border-box' }} />
+            <button type="button" onClick={() => setShowPw(!showPw)}
+              style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: '#9CA3AF', background: 'none', border: 'none', cursor: 'pointer', padding: 2 }}>
+              {showPw ? <EyeOff size={15} /> : <Eye size={15} />}
+            </button>
+          </div>
+        </div>
+
+        <button type="submit" disabled={loading}
+          style={{ width: '100%', padding: '11px 0', borderRadius: 9, border: 'none', background: loading ? '#9CA3AF' : 'linear-gradient(135deg, #00C9D4, #0088A9)', color: '#fff', fontSize: 14, fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer', marginTop: 4 }}>
+          {loading ? 'Signing in…' : 'Sign in'}
+        </button>
+      </form>
+
+      <p style={{ textAlign: 'center', fontSize: 12, color: '#9CA3AF', marginTop: 20 }}>
+        Need access?{' '}
+        <a href="mailto:yolymarorfiano@yahoo.com?subject=SterileTrack Access Request"
+          style={{ color: '#00B8C2', textDecoration: 'none', fontWeight: 500 }}>
+          Contact your administrator
+        </a>
+      </p>
+    </div>
+  )
+}
+
 export default function LandingPage() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
@@ -50,15 +157,15 @@ export default function LandingPage() {
         borderBottom: scrolled ? '0.5px solid rgba(255,255,255,0.08)' : 'none',
         transition: 'all 0.3s ease', padding: '0 24px',
       }}>
-        <div style={{ maxWidth: 1100, margin: '0 auto', display: 'flex', alignItems: 'center', height: 64 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1 }}>
+        <div style={{ maxWidth: 1200, margin: '0 auto', display: 'flex', alignItems: 'center', height: 64, gap: 32 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <div style={{ width: 32, height: 32, borderRadius: 8, background: 'linear-gradient(135deg, #00C9D4, #0088A9)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <Shield size={16} color="white" />
             </div>
             <span style={{ color: '#fff', fontWeight: 600, fontSize: 16, letterSpacing: '-0.3px' }}>SterileTrack</span>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 32, flex: 1, justifyContent: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 28, flex: 1 }}>
             {['Features', 'How It Works', 'Pricing'].map(item => (
               <a key={item} href={`#${item.toLowerCase().replace(/ /g, '-')}`}
                 style={{ color: 'rgba(255,255,255,0.6)', fontSize: 14, textDecoration: 'none' }}>
@@ -67,90 +174,85 @@ export default function LandingPage() {
             ))}
           </div>
 
-          <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12 }}>
-            <a href="/login" style={{ color: 'rgba(255,255,255,0.6)', fontSize: 14, textDecoration: 'none' }}>Sign in</a>
-            <a href="mailto:yolymarorfiano@yahoo.com?subject=SterileTrack Demo Request"
-              style={{ background: 'linear-gradient(135deg, #00C9D4, #0088A9)', color: '#fff', fontSize: 13, fontWeight: 500, padding: '8px 18px', borderRadius: 8, textDecoration: 'none' }}>
-              Request Demo
-            </a>
-            <button onClick={() => setMenuOpen(!menuOpen)}
-              style={{ display: 'none', background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: 4 }}>
-              {menuOpen ? <X size={22} /> : <Menu size={22} />}
-            </button>
-          </div>
+          <a href="mailto:yolymarorfiano@yahoo.com?subject=SterileTrack Demo Request"
+            style={{ background: 'linear-gradient(135deg, #00C9D4, #0088A9)', color: '#fff', fontSize: 13, fontWeight: 500, padding: '8px 18px', borderRadius: 8, textDecoration: 'none', whiteSpace: 'nowrap' }}>
+            Request Demo
+          </a>
+
+          <button onClick={() => setMenuOpen(!menuOpen)}
+            style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: 4, display: 'none' }}
+            className="md-hidden-btn">
+            {menuOpen ? <X size={22} /> : <Menu size={22} />}
+          </button>
         </div>
       </nav>
 
-      {/* HERO */}
+      {/* HERO — split layout with login card */}
       <section style={{
         background: 'linear-gradient(160deg, #0A0F1E 0%, #0D1F2D 60%, #0A1A20 100%)',
-        minHeight: '100vh', display: 'flex', alignItems: 'center',
-        padding: '120px 24px 80px', position: 'relative', overflow: 'hidden',
+        minHeight: '100vh', padding: '100px 24px 80px', position: 'relative', overflow: 'hidden',
       }}>
-        <div style={{ position: 'absolute', top: '20%', left: '50%', transform: 'translateX(-50%)', width: 600, height: 600, borderRadius: '50%', background: 'radial-gradient(circle, rgba(0,201,212,0.08) 0%, transparent 70%)', pointerEvents: 'none' }} />
+        <div style={{ position: 'absolute', top: '20%', left: '30%', width: 500, height: 500, borderRadius: '50%', background: 'radial-gradient(circle, rgba(0,201,212,0.07) 0%, transparent 70%)', pointerEvents: 'none' }} />
         <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', opacity: 0.03, backgroundImage: 'linear-gradient(rgba(255,255,255,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.5) 1px, transparent 1px)', backgroundSize: '60px 60px' }} />
 
-        <div style={{ maxWidth: 800, margin: '0 auto', textAlign: 'center', position: 'relative' }}>
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'rgba(0,201,212,0.1)', border: '0.5px solid rgba(0,201,212,0.3)', borderRadius: 100, padding: '6px 14px', marginBottom: 32 }}>
-            <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#00C9D4' }} />
-            <span style={{ color: '#00C9D4', fontSize: 12, fontWeight: 500, letterSpacing: '0.04em' }}>Now live at Baguio General Hospital</span>
-          </div>
+        <div style={{ maxWidth: 1200, margin: '0 auto', display: 'flex', alignItems: 'center', gap: 64, flexWrap: 'wrap', minHeight: 'calc(100vh - 180px)' }}>
 
-          <h1 style={{ color: '#fff', fontSize: 'clamp(36px, 6vw, 68px)', fontWeight: 700, lineHeight: 1.08, letterSpacing: '-2px', marginBottom: 24 }}>
-            Track Every Instrument.{' '}
-            <span style={{ background: 'linear-gradient(135deg, #00C9D4, #0088A9)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-              Trust Every Procedure.
-            </span>
-          </h1>
-
-          <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 'clamp(16px, 2vw, 20px)', lineHeight: 1.6, maxWidth: 560, margin: '0 auto 40px' }}>
-            Modern CSSD management for Philippine hospitals. Replace paper tags and logbooks with a complete digital chain of custody — from OR to sterilization and back.
-          </p>
-
-          <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
-            <a href="mailto:yolymarorfiano@yahoo.com?subject=SterileTrack Demo Request"
-              style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'linear-gradient(135deg, #00C9D4, #0088A9)', color: '#fff', fontWeight: 600, fontSize: 15, padding: '14px 28px', borderRadius: 10, textDecoration: 'none' }}>
-              Request a Demo <ArrowRight size={16} />
-            </a>
-            <a href="/login"
-              style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.8)', fontWeight: 500, fontSize: 15, padding: '14px 28px', borderRadius: 10, textDecoration: 'none' }}>
-              Sign In
-            </a>
-          </div>
-
-          <div style={{ marginTop: 80, display: 'flex', justifyContent: 'center' }}>
-            <a href="#features" style={{ color: 'rgba(255,255,255,0.2)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, textDecoration: 'none' }}>
-              <span style={{ fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Explore</span>
-              <ChevronDown size={18} />
-            </a>
-          </div>
-        </div>
-      </section>
-
-      {/* STATS */}
-      <section style={{ background: '#fff', borderTop: '1px solid #F0F0F0', padding: '56px 24px' }}>
-        <div style={{ maxWidth: 900, margin: '0 auto', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 40, textAlign: 'center' }}>
-          {[
-            { value: '440+', label: 'Instrument sets tracked' },
-            { value: '1', label: 'Hospital piloting SterileTrack' },
-            { value: '2,800+', label: 'Audit log entries created' },
-          ].map(stat => (
-            <div key={stat.label}>
-              <div style={{ fontSize: 48, fontWeight: 700, letterSpacing: '-2px', background: 'linear-gradient(135deg, #00C9D4, #0088A9)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-                {stat.value}
-              </div>
-              <div style={{ color: '#6B7280', fontSize: 14, marginTop: 6 }}>{stat.label}</div>
+          {/* Left — headline */}
+          <div style={{ flex: '1 1 400px', position: 'relative' }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'rgba(0,201,212,0.1)', border: '0.5px solid rgba(0,201,212,0.3)', borderRadius: 100, padding: '6px 14px', marginBottom: 28 }}>
+              <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#00C9D4' }} />
+              <span style={{ color: '#00C9D4', fontSize: 12, fontWeight: 500, letterSpacing: '0.04em' }}>Now live at Baguio General Hospital</span>
             </div>
-          ))}
+
+            <h1 style={{ color: '#fff', fontSize: 'clamp(32px, 5vw, 60px)', fontWeight: 700, lineHeight: 1.1, letterSpacing: '-2px', marginBottom: 20 }}>
+              Track Every{' '}
+              <span style={{ background: 'linear-gradient(135deg, #00C9D4, #0088A9)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+                Instrument.
+              </span>
+              <br />
+              Trust Every{' '}
+              <span style={{ background: 'linear-gradient(135deg, #00C9D4, #0088A9)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+                Procedure.
+              </span>
+            </h1>
+
+            <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 'clamp(15px, 1.8vw, 18px)', lineHeight: 1.65, marginBottom: 40, maxWidth: 480 }}>
+              Modern CSSD management for Philippine hospitals. Replace paper tags and logbooks with a complete digital chain of custody — from OR to sterilization and back.
+            </p>
+
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+              <a href="mailto:yolymarorfiano@yahoo.com?subject=SterileTrack Demo Request"
+                style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'linear-gradient(135deg, #00C9D4, #0088A9)', color: '#fff', fontWeight: 600, fontSize: 14, padding: '12px 24px', borderRadius: 10, textDecoration: 'none' }}>
+                Request a Demo <ArrowRight size={15} />
+              </a>
+              <a href="#features"
+                style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.8)', fontWeight: 500, fontSize: 14, padding: '12px 24px', borderRadius: 10, textDecoration: 'none' }}>
+                See Features
+              </a>
+            </div>
+
+            {/* Stats */}
+            <div style={{ display: 'flex', gap: 32, marginTop: 48, flexWrap: 'wrap' }}>
+              {[{ value: '440+', label: 'Sets tracked' }, { value: '1', label: 'Hospital live' }, { value: '2,800+', label: 'Audit logs' }].map(s => (
+                <div key={s.label}>
+                  <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-0.5px', background: 'linear-gradient(135deg, #00C9D4, #0088A9)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>{s.value}</div>
+                  <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: 12, marginTop: 2 }}>{s.label}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Right — login card */}
+          <div style={{ flex: '0 0 auto', display: 'flex', justifyContent: 'center' }}>
+            <LoginCard />
+          </div>
         </div>
       </section>
 
       {/* PROBLEM */}
       <section style={{ background: '#F8F9FB', padding: '80px 24px' }}>
         <div style={{ maxWidth: 680, margin: '0 auto', textAlign: 'center' }}>
-          <div style={{ display: 'inline-block', background: '#FEE2E2', color: '#B91C1C', fontSize: 12, fontWeight: 600, padding: '4px 12px', borderRadius: 100, letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 20 }}>
-            The Problem
-          </div>
+          <div style={{ display: 'inline-block', background: '#FEE2E2', color: '#B91C1C', fontSize: 12, fontWeight: 600, padding: '4px 12px', borderRadius: 100, letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 20 }}>The Problem</div>
           <h2 style={{ fontSize: 'clamp(26px, 4vw, 40px)', fontWeight: 700, letterSpacing: '-1px', marginBottom: 20, lineHeight: 1.2 }}>
             Paper-based CSSD tracking puts patients at risk
           </h2>
@@ -192,9 +294,7 @@ export default function LandingPage() {
             {steps.map((step, i) => (
               <div key={i} style={{ background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.08)', borderRadius: 16, padding: '28px 24px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-                  <div style={{ width: 44, height: 44, borderRadius: 12, flexShrink: 0, background: 'linear-gradient(135deg, #00C9D4, #0088A9)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 700, color: '#fff' }}>
-                    {step.number}
-                  </div>
+                  <div style={{ width: 44, height: 44, borderRadius: 12, flexShrink: 0, background: 'linear-gradient(135deg, #00C9D4, #0088A9)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 700, color: '#fff' }}>{step.number}</div>
                   <span style={{ color: '#00C9D4', fontSize: 11, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase' }}>{step.label}</span>
                 </div>
                 <h3 style={{ color: '#fff', fontSize: 17, fontWeight: 600, marginBottom: 10, letterSpacing: '-0.3px' }}>{step.title}</h3>
@@ -232,9 +332,7 @@ export default function LandingPage() {
             {plans.map((plan, i) => (
               <div key={i} style={{ borderRadius: 16, padding: '28px 24px', background: plan.highlight ? '#0A0F1E' : '#F8F9FB', border: plan.highlight ? '1px solid rgba(0,201,212,0.3)' : '1px solid #EDEEF0', position: 'relative' }}>
                 {plan.highlight && (
-                  <div style={{ position: 'absolute', top: -12, left: '50%', transform: 'translateX(-50%)', background: 'linear-gradient(135deg, #00C9D4, #0088A9)', color: '#fff', fontSize: 11, fontWeight: 600, padding: '4px 14px', borderRadius: 100, whiteSpace: 'nowrap' }}>
-                    Most Popular
-                  </div>
+                  <div style={{ position: 'absolute', top: -12, left: '50%', transform: 'translateX(-50%)', background: 'linear-gradient(135deg, #00C9D4, #0088A9)', color: '#fff', fontSize: 11, fontWeight: 600, padding: '4px 14px', borderRadius: 100, whiteSpace: 'nowrap' }}>Most Popular</div>
                 )}
                 <div style={{ marginBottom: 20 }}>
                   <div style={{ fontSize: 13, fontWeight: 600, color: plan.highlight ? 'rgba(255,255,255,0.5)' : '#6B7280', marginBottom: 6 }}>{plan.name}</div>
