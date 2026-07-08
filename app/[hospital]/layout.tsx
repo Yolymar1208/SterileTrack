@@ -125,24 +125,21 @@ export default function HospitalLayout({ children }: { children: React.ReactNode
   useEffect(() => {
     document.documentElement.style.setProperty('--brand', accentColor)
     document.documentElement.style.setProperty('--brand-mid', accentColor)
-    document.documentElement.style.setProperty('--brand-500', accentColor)
-    // Also inject a style tag for inline style overrides
-    let styleTag = document.getElementById('accent-override')
+    // Inject dynamic style overrides
+    let styleTag = document.getElementById('accent-override') as HTMLStyleElement | null
     if (!styleTag) {
       styleTag = document.createElement('style')
       styleTag.id = 'accent-override'
       document.head.appendChild(styleTag)
     }
-    styleTag.innerHTML = \`
-      :root { --brand: \${accentColor}; --brand-mid: \${accentColor}; }
-      .text-brand-500, .text-brand-400, .text-brand-300 { color: \${accentColor} !important; }
-      .bg-brand-50 { background: \${accentColor}18 !important; }
-      .btn-primary { background: \${accentColor} !important; }
-      .btn-primary:hover { background: \${accentColor}dd !important; }
-      [style*="#00C9D4"] { color: \${accentColor} !important; }
-      [style*="#00B8C2"] { color: \${accentColor} !important; }
-      [style*="00C9D4"] { border-color: \${accentColor} !important; }
-    \`
+    const css = [
+      ':root { --brand: ' + accentColor + '; --brand-mid: ' + accentColor + '; }',
+      '.text-brand-500, .text-brand-400, .text-brand-300 { color: ' + accentColor + ' !important; }',
+      '.bg-brand-50 { background: ' + accentColor + '18 !important; }',
+      '.btn-primary { background: ' + accentColor + ' !important; }',
+      '.btn-primary:hover { background: ' + accentColor + 'dd !important; }',
+    ].join('\n')
+    styleTag.innerHTML = css
   }, [accentColor])
 
   async function handleLogout() {
