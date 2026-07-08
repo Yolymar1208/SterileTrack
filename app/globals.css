@@ -104,6 +104,7 @@ body {
     color: var(--text-primary);
     letter-spacing: -0.1px;
   }
+  
   /* ── Dark Mode CSS Variables ─────────────────────────────────────────────────
    Add these to the END of your existing globals.css file
    ─────────────────────────────────────────────────────────────────────────── */
