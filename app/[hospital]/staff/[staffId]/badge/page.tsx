@@ -77,7 +77,14 @@ export default function StaffBadgePrintPage() {
   useEffect(() => {
     async function load() {
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
+      if (!user) { window.location.href = '/'; return }
+
+      // Only the owner can print their own badge
+      if (user.id !== staffId) {
+        setLoading(false)
+        setStaff(null)
+        return
+      }
 
       const { data: profile } = await supabase
         .from('profiles')
@@ -106,8 +113,9 @@ export default function StaffBadgePrintPage() {
   )
 
   if (!staff) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', fontFamily: 'Arial, sans-serif', color: '#6B7280' }}>
-      Staff not found.
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', fontFamily: 'Arial, sans-serif', color: '#374151', flexDirection: 'column', gap: 8 }}>
+      <div style={{ fontSize: 18, fontWeight: 600 }}>Access Denied</div>
+      <div style={{ fontSize: 14, color: '#6B7280' }}>You can only print your own badge.</div>
     </div>
   )
 
@@ -118,7 +126,7 @@ export default function StaffBadgePrintPage() {
     <>
       <style>{`
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: Arial, sans-serif; background: #EDEEF0; display: flex; align-items: center; justify-content: center; min-height: 100vh; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        body { font-family: Arial, sans-serif; background: #F3F4F6; display: flex; align-items: center; justify-content: center; min-height: 100vh; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         @page { margin: 0; size: 3.375in 2.125in landscape; }
         @media print {
           body { background: white; display: block; min-height: auto; }
@@ -145,9 +153,10 @@ export default function StaffBadgePrintPage() {
       {/* Badge — credit card size: 3.375in × 2.125in */}
       <div className="badge" style={{
         width: 324, height: 204,
-        background: '#0A0F1E',
+        background: '#FFFFFF',
+        border: '1.5px solid #E5E7EB',
         borderRadius: 12,
-        boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
         overflow: 'hidden',
         display: 'flex',
         flexDirection: 'column',
@@ -167,8 +176,8 @@ export default function StaffBadgePrintPage() {
                 <Shield size={11} color="white" />
               </div>
               <div>
-                <div style={{ color: '#00C9D4', fontSize: 9, fontWeight: 700, letterSpacing: '0.03em' }}>SterileTrack</div>
-                <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 7, lineHeight: 1.2 }}>{hospital}</div>
+                <div style={{ color: '#00B8C2', fontSize: 9, fontWeight: 700, letterSpacing: '0.03em' }}>SterileTrack</div>
+                <div style={{ color: '#9CA3AF', fontSize: 7, lineHeight: 1.2 }}>{hospital}</div>
               </div>
             </div>
 
@@ -184,10 +193,10 @@ export default function StaffBadgePrintPage() {
                   {initials}
                 </div>
                 <div>
-                  <div style={{ color: '#fff', fontSize: 13, fontWeight: 700, letterSpacing: '-0.3px', lineHeight: 1.2 }}>
+                  <div style={{ color: '#0A0F1E', fontSize: 13, fontWeight: 700, letterSpacing: '-0.3px', lineHeight: 1.2 }}>
                     {staff.full_name}
                   </div>
-                  <div style={{ color: '#00C9D4', fontSize: 9, fontWeight: 600, marginTop: 2, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  <div style={{ color: '#00B8C2', fontSize: 9, fontWeight: 600, marginTop: 2, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                     {roleLabel}
                   </div>
                 </div>
@@ -197,14 +206,14 @@ export default function StaffBadgePrintPage() {
               <div style={{ display: 'flex', gap: 12 }}>
                 {staff.employee_id && (
                   <div>
-                    <div style={{ fontSize: 7, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Employee ID</div>
-                    <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)', fontWeight: 600, fontFamily: 'monospace' }}>{staff.employee_id}</div>
+                    <div style={{ fontSize: 7, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Employee ID</div>
+                    <div style={{ fontSize: 10, color: '#374151', fontWeight: 600, fontFamily: 'monospace' }}>{staff.employee_id}</div>
                   </div>
                 )}
                 {staff.department && (
                   <div>
-                    <div style={{ fontSize: 7, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Department</div>
-                    <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)', fontWeight: 600 }}>{staff.department}</div>
+                    <div style={{ fontSize: 7, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Department</div>
+                    <div style={{ fontSize: 10, color: '#374151', fontWeight: 600 }}>{staff.department}</div>
                   </div>
                 )}
               </div>
@@ -223,7 +232,7 @@ export default function StaffBadgePrintPage() {
               )}
             </div>
             {staff.qr_code && (
-              <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 7, fontFamily: 'monospace', textAlign: 'center' }}>
+              <div style={{ color: '#9CA3AF', fontSize: 7, fontFamily: 'monospace', textAlign: 'center' }}>
                 {staff.qr_code}
               </div>
             )}
