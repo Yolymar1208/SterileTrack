@@ -1,4 +1,6 @@
 'use client'
+import OnboardingWizard from '@/components/OnboardingWizard'
+import NotificationsPanel from '@/components/NotificationsPanel'
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
@@ -221,6 +223,7 @@ export default function HospitalLayout({ children }: { children: React.ReactNode
             </div>
             <span style={{ fontWeight: 500, fontSize: 15, color: '#fff', letterSpacing: '-0.3px' }}>SterileTrack</span>
           </div>
+          <NotificationsPanel slug={slug} initialCount={alertCount} />
           <button onClick={() => setSidebarOpen(true)}
             style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.6)', cursor: 'pointer', padding: 4 }}>
             <Menu size={22} />
@@ -297,6 +300,7 @@ export default function HospitalLayout({ children }: { children: React.ReactNode
         </div>
 
       </div>
+      <OnboardingWizard hospitalName={hospitalName} slug={slug} />
     </div>
   )
 }
