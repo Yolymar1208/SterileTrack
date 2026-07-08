@@ -138,9 +138,10 @@ export default function InventoryPage() {
           {loading ? (
             <div className="p-8 text-center text-gray-400 text-sm">Loading inventory…</div>
           ) : filtered.length === 0 ? (
-            <div className="p-8 text-center">
-              <Package size={32} className="text-gray-300 mx-auto mb-3" />
-              <p className="text-gray-500 text-sm font-medium">No items found</p>
+            <div className="p-10 text-center">
+              <div style={{ fontSize: 40, marginBottom: 12 }}>📦</div>
+              <p className="font-medium text-gray-600 text-sm">No items found</p>
+              <p className="text-xs text-gray-400 mt-1">Try a different status filter</p>
             </div>
           ) : filtered.map(item => {
             const cfg = STATUS_CONFIG[item.status]
