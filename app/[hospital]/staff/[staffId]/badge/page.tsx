@@ -25,44 +25,17 @@ const ROLE_LABELS: Record<string, string> = {
   materials_management: 'Materials Management',
 }
 
-// Simple pseudo-QR visual using the code string as seed
-function QRPattern({ code, size = 120 }: { code: string; size?: number }) {
-  const cell  = Math.floor(size / 7)
-  const cells = 7
-
-  // Generate deterministic grid from code
-  let hash = 0
-  for (let i = 0; i < code.length; i++) {
-    hash = (hash * 31 + code.charCodeAt(i)) >>> 0
-  }
-
-  function isSet(row: number, col: number): boolean {
-    // Finder patterns
-    if (row < 3 && col < 3) return true
-    if (row < 3 && col >= 4) return true
-    if (row >= 4 && col < 3) return true
-    // Data modules
-    const idx = row * cells + col
-    return ((hash >> (idx % 32)) & 1) === 1
-  }
-
-  const svgSize = cell * cells
-  const rects: JSX.Element[] = []
-  for (let r = 0; r < cells; r++) {
-    for (let c = 0; c < cells; c++) {
-      if (isSet(r, c)) {
-        rects.push(
-          <rect key={`${r}-${c}`} x={c * cell} y={r * cell} width={cell - 1} height={cell - 1} fill="#0A0F1E" />
-        )
-      }
-    }
-  }
-
+// Real QR code image using the staff's assigned QR code value
+function QRImage({ code, size = 84 }: { code: string; size?: number }) {
+  const url = `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(code)}&bgcolor=ffffff&color=0a0f1e&margin=4`
   return (
-    <svg width={svgSize} height={svgSize} viewBox={`0 0 ${svgSize} ${svgSize}`}>
-      <rect width={svgSize} height={svgSize} fill="white" />
-      {rects}
-    </svg>
+    <img
+      src={url}
+      alt={`QR Code: ${code}`}
+      width={size}
+      height={size}
+      style={{ display: 'block', borderRadius: 2 }}
+    />
   )
 }
 
@@ -224,7 +197,7 @@ export default function StaffBadgePrintPage() {
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
             <div style={{ background: '#fff', padding: 5, borderRadius: 6 }}>
               {staff.qr_code ? (
-                <QRPattern code={staff.qr_code} size={84} />
+                <QRImage code={staff.qr_code} size={84} />
               ) : (
                 <div style={{ width: 84, height: 84, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9CA3AF', fontSize: 9, textAlign: 'center', padding: 4 }}>
                   No QR code assigned
