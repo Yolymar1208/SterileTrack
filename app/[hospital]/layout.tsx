@@ -11,7 +11,7 @@ import {
   LayoutDashboard, Package, Inbox, Send,
   Archive, ListChecks, History, Bell,
   Shield, LogOut, Menu, ChevronRight,
-  Users, ClipboardCheck, Settings, X, Moon, Sun
+  Users, ClipboardCheck, Settings, X, Moon, Sun, SlidersHorizontal
 } from 'lucide-react'
 
 const SUPERADMIN_EMAIL = 'yolymarorfiano@yahoo.com'
@@ -25,6 +25,8 @@ export default function HospitalLayout({ children }: { children: React.ReactNode
 
   const { theme, toggle: toggleTheme } = useTheme()
   const [sidebarOpen, setSidebarOpen]       = useState(false)
+  const [accentColor, setAccentColor]       = useState('#00C9D4')
+  const [logoUrl, setLogoUrl]               = useState<string | null>(null)
   const [user, setUser]                     = useState<{ name: string; role: string; initials: string; id: string; email: string } | null>(null)
   const [hospitalName, setHospitalName]     = useState('')
   const [alertCount, setAlertCount]         = useState(0)
@@ -81,6 +83,15 @@ export default function HospitalLayout({ children }: { children: React.ReactNode
             profile.full_name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase(),
         })
         setHospitalName((profile.hospitals as any)?.name || '')
+
+      // Load hospital branding
+      const { data: h } = await supabase
+        .from('hospitals')
+        .select('accent_color, logo_url')
+        .eq('slug', slug)
+        .single()
+      if (h?.accent_color) setAccentColor(h.accent_color)
+      if (h?.logo_url) setLogoUrl(h.logo_url)
       }
 
       const { count: ac } = await supabase
@@ -110,6 +121,12 @@ export default function HospitalLayout({ children }: { children: React.ReactNode
     load()
   }, [pathname])
 
+  // Apply accent color as CSS variable
+  useEffect(() => {
+    document.documentElement.style.setProperty('--brand', accentColor)
+    document.documentElement.style.setProperty('--brand-mid', accentColor)
+  }, [accentColor])
+
   async function handleLogout() {
     await supabase.auth.signOut()
     router.push('/')
@@ -119,8 +136,12 @@ export default function HospitalLayout({ children }: { children: React.ReactNode
     <div className="flex flex-col h-full" style={{ background: '#0A0F1E' }}>
       <div style={{ padding: '20px 16px 16px', borderBottom: '0.5px solid rgba(255,255,255,0.06)' }}>
         <div className="flex items-center gap-2.5">
-          <div style={{ width: 34, height: 34, borderRadius: 9, background: 'linear-gradient(135deg, #00C9D4, #0088A9)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <Shield size={16} className="text-white" />
+          <div style={{ width: 34, height: 34, borderRadius: 9, background: logoUrl ? '#fff' : `linear-gradient(135deg, ${accentColor}, #0088A9)`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden', border: logoUrl ? '1px solid rgba(255,255,255,0.1)' : 'none' }}>
+            {logoUrl ? (
+              <img src={logoUrl} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 3 }} />
+            ) : (
+              <Shield size={16} className="text-white" />
+            )}
           </div>
           <div className="min-w-0">
             <div style={{ color: '#fff', fontWeight: 500, fontSize: 15, letterSpacing: '-0.3px' }}>SterileTrack</div>
@@ -155,6 +176,16 @@ export default function HospitalLayout({ children }: { children: React.ReactNode
             })}
           </div>
         ))}
+
+        <div className="mb-5">
+          <div style={{ fontSize: 10, fontWeight: 500, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.22)', padding: '6px 8px 3px' }}>Hospital</div>
+          <Link href={`/${slug}/settings`} onClick={() => setSidebarOpen(false)}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 8, marginBottom: 1, fontSize: 13, cursor: 'pointer', transition: 'all 0.12s', color: pathname === `/${slug}/settings` ? accentColor : 'rgba(255,255,255,0.5)', background: pathname === `/${slug}/settings` ? `rgba(0,201,212,0.1)` : 'transparent' }}>
+              <SlidersHorizontal size={16} style={{ flexShrink: 0 }} />
+              <span>Settings</span>
+            </div>
+          </Link>
+        </div>
 
         {user?.email === SUPERADMIN_EMAIL && (
           <div className="mb-5">
@@ -223,8 +254,12 @@ export default function HospitalLayout({ children }: { children: React.ReactNode
         <div className="md:hidden flex items-center justify-between px-4 py-3"
           style={{ background: '#0A0F1E', borderBottom: '0.5px solid rgba(255,255,255,0.06)' }}>
           <div className="flex items-center gap-2">
-            <div style={{ width: 26, height: 26, borderRadius: 7, background: 'linear-gradient(135deg, #00C9D4, #0088A9)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Shield size={13} className="text-white" />
+            <div style={{ width: 26, height: 26, borderRadius: 7, background: logoUrl ? '#fff' : `linear-gradient(135deg, ${accentColor}, #0088A9)`, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', border: logoUrl ? '1px solid rgba(255,255,255,0.15)' : 'none' }}>
+              {logoUrl ? (
+                <img src={logoUrl} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 2 }} />
+              ) : (
+                <Shield size={13} className="text-white" />
+              )}
             </div>
             <span style={{ fontWeight: 500, fontSize: 15, color: '#fff', letterSpacing: '-0.3px' }}>SterileTrack</span>
           </div>
