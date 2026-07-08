@@ -51,8 +51,8 @@ export default function HospitalLayout({ children }: { children: React.ReactNode
   const BOTTOM_NAV = [
     { href: `/${slug}/dashboard`,      label: 'Home',      icon: LayoutDashboard },
     { href: `/${slug}/dispensing`,     label: 'Dispense',  icon: Send },
-    { href: `/${slug}/receiving`,      label: 'Receive',   icon: Inbox },
     { href: `/${slug}/or-verification`,label: 'Verify',    icon: ClipboardCheck, badge: 'or' },
+    { href: `/${slug}/receiving`,      label: 'Receive',   icon: Inbox },
     { href: `/${slug}/alerts`,         label: 'Alerts',    icon: Bell, badge: 'alert' },
   ]
 
@@ -166,7 +166,7 @@ export default function HospitalLayout({ children }: { children: React.ReactNode
       </nav>
 
       {user && (
-        <div style={{ borderTop: '0.5px solid rgba(255,255,255,0.06)', padding: '12px 12px 14px' }}>
+        <div style={{ borderTop: '0.5px solid rgba(255,255,255,0.06)', padding: '12px 12px 14px', paddingBottom: 'calc(14px + env(safe-area-inset-bottom))' }}>
           <div className="flex items-center gap-2.5">
             <div style={{ width: 30, height: 30, borderRadius: '50%', flexShrink: 0, background: 'linear-gradient(135deg, #00C9D4, #0088A9)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 500, color: '#fff' }}>
               {user.initials}
@@ -195,7 +195,7 @@ export default function HospitalLayout({ children }: { children: React.ReactNode
       {/* Mobile full-screen sidebar overlay */}
       {sidebarOpen && (
         <div className="md:hidden fixed inset-0 z-50 flex">
-          <div className="w-64 flex flex-col" style={{ background: '#0A0F1E' }}>
+          <div className="w-64 flex flex-col" style={{ background: '#0A0F1E', paddingBottom: 80 }}>
             {/* Close button */}
             <div style={{ padding: '16px 16px 0', display: 'flex', justifyContent: 'flex-end' }}>
               <button onClick={() => setSidebarOpen(false)}
