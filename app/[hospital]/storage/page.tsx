@@ -108,8 +108,9 @@ export default function StoragePage() {
         {loading ? <div className="card p-8 text-center text-gray-400">Loading…</div>
         : filtered.length === 0 ? (
           <div className="card p-10 text-center">
-            <Archive size={40} className="text-gray-300 mx-auto mb-3" />
-            <p className="font-medium text-gray-600">No items in storage</p>
+            <div style={{ fontSize: 44, marginBottom: 12 }}>🏥</div>
+            <p className="font-medium text-gray-600 text-sm">Storage shelf is empty</p>
+            <p className="text-xs text-gray-400 mt-1">Sterile sets will appear here after sterilization</p>
           </div>
         ) : (
           <div className="space-y-4">
