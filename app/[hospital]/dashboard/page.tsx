@@ -82,6 +82,7 @@ export default function DashboardPage() {
   const [showPw, setShowPw]             = useState(false)
   const [pwError, setPwError]           = useState('')
   const [uploading, setUploading]       = useState(false)
+  const [logoUrl, setLogoUrl]             = useState<string | null>(null)
 
   // Animated stat counters
   const animSterile  = useAnimatedCount(stats?.sterile_count)
@@ -162,7 +163,36 @@ export default function DashboardPage() {
   }
 
   return (
-    <div style={{ padding: '20px 24px', maxWidth: 960, margin: '0 auto' }}>
+    <div style={{ padding: '20px 24px', maxWidth: 960, margin: '0 auto', position: 'relative' }}>
+
+      {/* Hospital logo watermark — behind all content */}
+      {logoUrl && (
+        <div style={{
+          position: 'fixed',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          width: 320,
+          height: 320,
+          zIndex: 0,
+          pointerEvents: 'none',
+        }}>
+          <img
+            src={logoUrl}
+            alt=""
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'contain',
+              opacity: 0.06,
+              filter: 'grayscale(100%)',
+            }}
+          />
+        </div>
+      )}
+
+      {/* All content sits above the watermark */}
+      <div style={{ position: 'relative', zIndex: 1 }}>
 
       {/* Topbar */}
       <div className="flex items-center justify-between mb-6">
@@ -458,6 +488,7 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
+      </div>
     </div>
   )
-}
+            }
