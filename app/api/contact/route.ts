@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
           body: JSON.stringify({
             sender: {
               name:  'SterileTrack',
-              email: 'noreply@steriletrak.com',
+              email: 'noreply@sendinblue.com',
             },
             to: [{ email: 'yolymarorfiano@yahoo.com', name: 'Yolymar Orfiano' }],
             subject: `New Demo Request — ${name} (${hospital})`,
