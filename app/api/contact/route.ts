@@ -41,6 +41,7 @@ export async function POST(req: NextRequest) {
     // Send email via Brevo
     const BREVO_KEY = process.env.BREVO_API_KEY
     console.log('BREVO_KEY present:', !!BREVO_KEY)
+    console.log('BREVO_KEY starts with:', BREVO_KEY?.substring(0, 10))
 
     if (BREVO_KEY) {
       const brevoRes = await fetch('https://api.brevo.com/v3/smtp/email', {
