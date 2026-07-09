@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase'
+import { createClient } from '@/lib/supabase'
 import {
   Shield, QrCode, Bell, ClipboardCheck,
   ArrowRight, CheckCircle, ChevronDown,
@@ -137,14 +138,37 @@ function LoginCard() {
 }
 
 export default function LandingPage() {
-  const [menuOpen, setMenuOpen] = useState(false)
-  const [scrolled, setScrolled] = useState(false)
+  const [menuOpen, setMenuOpen]     = useState(false)
+  const [scrolled, setScrolled]     = useState(false)
+  const [formData, setFormData]     = useState({ name: '', hospital: '', phone: '', email: '', message: '' })
+  const [formStatus, setFormStatus] = useState<'idle'|'sending'|'sent'|'error'>('idle')
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 40)
     window.addEventListener('scroll', handleScroll)
     return () => window.removeEventListener('scroll', handleScroll)
   }, [])
+
+  async function handleContactSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!formData.name || !formData.hospital) return
+    setFormStatus('sending')
+    try {
+      const supabase = createClient()
+      const { error } = await supabase.from('contact_leads').insert({
+        name:     formData.name,
+        hospital: formData.hospital,
+        phone:    formData.phone || null,
+        email:    formData.email || null,
+        message:  formData.message || null,
+      })
+      if (error) throw error
+      setFormStatus('sent')
+      setFormData({ name: '', hospital: '', phone: '', email: '', message: '' })
+    } catch {
+      setFormStatus('error')
+    }
+  }
 
   return (
     <div style={{ fontFamily: 'Inter, -apple-system, sans-serif', color: '#0A0F1E' }}>
@@ -166,7 +190,7 @@ export default function LandingPage() {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 28, flex: 1 }}>
-            {['Features', 'How It Works', 'Pricing'].map(item => (
+            {['Features', 'How It Works', 'Pricing', 'Contact'].map(item => (
               <a key={item} href={`#${item.toLowerCase().replace(/ /g, '-')}`}
                 style={{ color: 'rgba(255,255,255,0.6)', fontSize: 14, textDecoration: 'none' }}>
                 {item}
@@ -356,6 +380,75 @@ export default function LandingPage() {
               </div>
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* CONTACT FORM */}
+      <section id="contact" style={{ background: '#fff', padding: '96px 24px' }}>
+        <div style={{ maxWidth: 680, margin: '0 auto' }}>
+          <div style={{ textAlign: 'center', marginBottom: 48 }}>
+            <div style={{ display: 'inline-block', background: 'rgba(0,201,212,0.08)', color: '#00B8C2', fontSize: 12, fontWeight: 600, padding: '4px 12px', borderRadius: 100, letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 16 }}>Contact Us</div>
+            <h2 style={{ fontSize: 'clamp(26px, 4vw, 40px)', fontWeight: 700, letterSpacing: '-1px', marginBottom: 12, lineHeight: 1.2 }}>Request a Demo</h2>
+            <p style={{ color: '#6B7280', fontSize: 16 }}>Fill in your details and we will reach out within 24 hours to schedule a walkthrough.</p>
+          </div>
+
+          {formStatus === 'sent' ? (
+            <div style={{ textAlign: 'center', padding: '48px 24px', background: '#F0FDFA', borderRadius: 16, border: '1px solid #CCFBF1' }}>
+              <div style={{ fontSize: 40, marginBottom: 16 }}>✅</div>
+              <h3 style={{ fontSize: 20, fontWeight: 700, color: '#0F766E', marginBottom: 8 }}>Message received!</h3>
+              <p style={{ color: '#0F766E', fontSize: 15 }}>We will contact you within 24 hours to schedule your demo.</p>
+            </div>
+          ) : (
+            <form onSubmit={handleContactSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: '#374151', marginBottom: 6 }}>Full Name *</label>
+                  <input value={formData.name} onChange={e => setFormData(f => ({ ...f, name: e.target.value }))}
+                    placeholder="Your name" required
+                    style={{ width: '100%', padding: '10px 14px', borderRadius: 9, border: '1px solid #E5E7EB', fontSize: 14, outline: 'none', color: '#0D1117', boxSizing: 'border-box' as any }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: '#374151', marginBottom: 6 }}>Hospital Name *</label>
+                  <input value={formData.hospital} onChange={e => setFormData(f => ({ ...f, hospital: e.target.value }))}
+                    placeholder="Your hospital" required
+                    style={{ width: '100%', padding: '10px 14px', borderRadius: 9, border: '1px solid #E5E7EB', fontSize: 14, outline: 'none', color: '#0D1117', boxSizing: 'border-box' as any }} />
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: '#374151', marginBottom: 6 }}>Phone / Viber</label>
+                  <input value={formData.phone} onChange={e => setFormData(f => ({ ...f, phone: e.target.value }))}
+                    placeholder="09XX XXX XXXX"
+                    style={{ width: '100%', padding: '10px 14px', borderRadius: 9, border: '1px solid #E5E7EB', fontSize: 14, outline: 'none', color: '#0D1117', boxSizing: 'border-box' as any }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: '#374151', marginBottom: 6 }}>Email</label>
+                  <input type="email" value={formData.email} onChange={e => setFormData(f => ({ ...f, email: e.target.value }))}
+                    placeholder="you@hospital.com"
+                    style={{ width: '100%', padding: '10px 14px', borderRadius: 9, border: '1px solid #E5E7EB', fontSize: 14, outline: 'none', color: '#0D1117', boxSizing: 'border-box' as any }} />
+                </div>
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: '#374151', marginBottom: 6 }}>Message (optional)</label>
+                <textarea value={formData.message} onChange={e => setFormData(f => ({ ...f, message: e.target.value }))}
+                  placeholder="Tell us about your CSSD setup, number of ORs, current tracking method..."
+                  rows={4}
+                  style={{ width: '100%', padding: '10px 14px', borderRadius: 9, border: '1px solid #E5E7EB', fontSize: 14, outline: 'none', color: '#0D1117', resize: 'vertical', boxSizing: 'border-box' as any }} />
+              </div>
+              {formStatus === 'error' && (
+                <p style={{ color: '#B91C1C', fontSize: 13 }}>Something went wrong. Please email us directly at yolymarorfiano@yahoo.com</p>
+              )}
+              <button type="submit" disabled={formStatus === 'sending'}
+                style={{
+                  width: '100%', padding: '13px 0', borderRadius: 10, border: 'none',
+                  background: formStatus === 'sending' ? '#9CA3AF' : 'linear-gradient(135deg, #00C9D4, #0088A9)',
+                  color: '#fff', fontSize: 15, fontWeight: 600, cursor: formStatus === 'sending' ? 'not-allowed' : 'pointer',
+                }}>
+                {formStatus === 'sending' ? 'Sending…' : 'Send Message →'}
+              </button>
+              <p style={{ textAlign: 'center', fontSize: 12, color: '#9CA3AF' }}>No commitment required · We respond within 24 hours</p>
+            </form>
+          )}
         </div>
       </section>
 
