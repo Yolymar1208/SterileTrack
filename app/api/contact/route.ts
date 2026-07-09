@@ -41,7 +41,6 @@ export async function POST(req: NextRequest) {
     // Send email via Brevo
     const BREVO_KEY = process.env.BREVO_API_KEY
     console.log('BREVO_KEY present:', !!BREVO_KEY)
-    console.log('BREVO_KEY starts with:', BREVO_KEY?.substring(0, 10))
 
     if (BREVO_KEY) {
       const brevoRes = await fetch('https://api.brevo.com/v3/smtp/email', {
@@ -55,7 +54,7 @@ export async function POST(req: NextRequest) {
             name:  'SterileTrack',
             email: 'yolymarorfiano@yahoo.com',
           },
-          to: [{ email: 'yolymarorfiano@yahoo.com', name: 'Yolymar Orfiano' }],
+          to: [{ email: 'antetokounmpo8@gmail.com', name: 'Yolymar Orfiano' }],
           subject: `New Demo Request — ${name} (${hospital})`,
           textContent: `New demo request from steriletrak.com!\n\nName: ${name}\nHospital: ${hospital}\nPhone: ${phone || 'Not provided'}\nEmail: ${email || 'Not provided'}\nMessage: ${message || 'No message'}\n\nView leads: https://steriletrak.com/superadmin/leads`,
         }),
