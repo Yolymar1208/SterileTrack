@@ -1,4 +1,5 @@
 'use client'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts"
 
 import { useHospitalSlug } from '@/lib/hospital'
 import { FileText } from 'lucide-react'
@@ -83,6 +84,7 @@ export default function DashboardPage() {
   const [pwError, setPwError]           = useState('')
   const [uploading, setUploading]       = useState(false)
   const [logoUrl, setLogoUrl]             = useState<string | null>(null)
+  const [chartData, setChartData]         = useState<{ day: string; count: number }[]>([])
 
   // Animated stat counters
   const animSterile  = useAnimatedCount(stats?.sterile_count)
@@ -123,6 +125,28 @@ export default function DashboardPage() {
     if (s) setStats(s)
     const { data: a } = await supabase.from('audit_logs').select('*').order('created_at',{ascending:false}).limit(6)
     setRecentAudit(a || [])
+
+    // Load 7-day activity chart
+    const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString()
+    const { data: recentLogs } = await supabase
+      .from('audit_logs')
+      .select('created_at')
+      .gte('created_at', sevenDaysAgo)
+      .order('created_at', { ascending: true })
+
+    // Group by day
+    const dayMap: Record<string, number> = {}
+    const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(Date.now() - i * 86400000)
+      dayMap[days[d.getDay()] + ' ' + d.getDate()] = 0
+    }
+    ;(recentLogs || []).forEach(l => {
+      const d = new Date(l.created_at)
+      const key = days[d.getDay()] + ' ' + d.getDate()
+      if (key in dayMap) dayMap[key]++
+    })
+    setChartData(Object.entries(dayMap).map(([day, count]) => ({ day, count })))
 
     // Load hospital logo for watermark
     const { data: hData } = await supabase.from('hospitals').select('logo_url').eq('slug', slug).single()
@@ -397,6 +421,31 @@ export default function DashboardPage() {
 
       {/* Recent activity */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+        {/* Weekly Activity Chart */}
+        {chartData.length > 0 && (
+          <div className="card p-4 mb-4">
+            <div className="flex items-center justify-between mb-3">
+              <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>Activity — Last 7 Days</span>
+              <span style={{ fontSize: 11, color: '#9CA3AF' }}>audit log entries</span>
+            </div>
+            <ResponsiveContainer width="100%" height={100}>
+              <BarChart data={chartData} barSize={20}>
+                <XAxis dataKey="day" tick={{ fontSize: 10, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
+                <YAxis hide />
+                <Tooltip
+                  contentStyle={{ fontSize: 12, borderRadius: 8, border: '0.5px solid #E5E7EB', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}
+                  cursor={{ fill: 'rgba(0,0,0,0.04)' }}
+                />
+                <Bar dataKey="count" radius={[4,4,0,0]}>
+                  {chartData.map((_, i) => (
+                    <Cell key={i} fill={i === chartData.length - 1 ? 'var(--brand)' : 'var(--brand)33'} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+
         <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)', letterSpacing: '-0.1px' }}>Recent Activity</span>
         <Link href={`/${slug}/audit`}><span style={{ fontSize: 12, color: 'var(--brand)', cursor: 'pointer' }}>Full audit trail →</span></Link>
       </div>
@@ -496,4 +545,4 @@ export default function DashboardPage() {
       </div>
     </div>
   )
-                         }
+                   }
