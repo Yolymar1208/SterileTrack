@@ -2,6 +2,8 @@
 import OnboardingWizard from '@/components/OnboardingWizard'
 import NotificationsPanel from '@/components/NotificationsPanel'
 import { useTheme } from '@/components/ThemeProvider'
+import PlanLimitBanner from '@/components/PlanLimitBanner'
+import AnnouncementBanner from '@/components/AnnouncementBanner'
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
@@ -330,6 +332,8 @@ export default function HospitalLayout({ children }: { children: React.ReactNode
 
         {/* Page content — add bottom padding on mobile for bottom nav */}
         <main className="flex-1 overflow-y-auto" style={{ background: '#EDEEF0', paddingBottom: 0 }}>
+          <AnnouncementBanner />
+          <PlanLimitBanner />
           <div className="md:pb-0 pb-20">
             {children}
           </div>
