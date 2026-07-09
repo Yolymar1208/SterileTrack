@@ -48,7 +48,7 @@ export default function AnnouncementBanner() {
               <span style={{ fontSize: 13, fontWeight: 600, color: '#0A0F1E' }}>{a.title} </span>
               <span style={{ fontSize: 12, color: '#6B7280' }}>{a.body}</span>
             </div>
-            <button onClick={() => setDismissed(d => new Set([...d, a.id]))}
+            <button onClick={() => setDismissed(d => new Set(Array.from(d).concat(a.id)))}
               style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF', padding: 2, flexShrink: 0 }}>
               <X size={14} />
             </button>
