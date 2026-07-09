@@ -153,28 +153,16 @@ export default function LandingPage() {
     if (!formData.name || !formData.hospital) return
     setFormStatus('sending')
     try {
-      const url = process.env.NEXT_PUBLIC_SUPABASE_URL + '/rest/v1/contact_leads'
-      const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-      const res = await fetch(url, {
+      const res = await fetch('/api/contact', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': key!,
-          'Authorization': 'Bearer ' + key!,
-          'Prefer': 'return=minimal',
-        },
-        body: JSON.stringify({
-          name:     formData.name,
-          hospital: formData.hospital,
-          phone:    formData.phone || null,
-          email:    formData.email || null,
-          message:  formData.message || null,
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData),
       })
-      if (!res.ok) throw new Error(await res.text())
+      if (!res.ok) throw new Error('Failed')
       setFormStatus('sent')
       setFormData({ name: '', hospital: '', phone: '', email: '', message: '' })
-    } catch {
+    } catch (err: any) {
+      console.error('Contact form error:', err)
       setFormStatus('error')
     }
   }
