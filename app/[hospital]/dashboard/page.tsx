@@ -123,6 +123,11 @@ export default function DashboardPage() {
     if (s) setStats(s)
     const { data: a } = await supabase.from('audit_logs').select('*').order('created_at',{ascending:false}).limit(6)
     setRecentAudit(a || [])
+
+    // Load hospital logo for watermark
+    const { data: hData } = await supabase.from('hospitals').select('logo_url').eq('slug', slug).single()
+    if (hData?.logo_url) setLogoUrl(hData.logo_url)
+
     setLoading(false)
   }
 
@@ -491,4 +496,4 @@ export default function DashboardPage() {
       </div>
     </div>
   )
-            }
+                         }
